@@ -9,6 +9,27 @@ sPort = 3000
 def index():
     return app.send_static_file('index.html')
 
+@app.route('/fullformats', methods=['POST'])
+def get_fullformats():
+    data = request.json
+    link = data['url']
+    
+    ydl_opts = {
+        'format': 'best',
+        'quiet': True,
+        'no_warnings': True,
+        'ignoreerrors': True,
+        'extractor_args': {'youtube': {'skip': ['dash', 'hls']}}
+    }
+    
+    formats = []
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(link, download=False)
+        for f in info['formats']:
+            formats.append(f)
+    
+    return jsonify(formats)
+
 @app.route('/formats', methods=['POST'])
 def get_formats():
     data = request.json
@@ -63,6 +84,33 @@ def get_video():
     except:
         # message to be printed in the case of error
         print("Download error!")
+
+@app.route('/combine', methods=['POST'])
+def Download_Combine():
+    # download and save both video and audio in downloads folder
+    data = request.json
+    videoURL = data['videoURL']
+    audioURL = data['audioURL']
+    filename = data['filename']
+
+    try:
+        # attempt to download without errors
+        print('downloading video')
+        Download(videoURL, 'downloads/v_' + filename)
+        print('downloading audio')
+        Download(audioURL, 'downloads/a_' + filename)
+
+        print('combining video and audio')
+        return jsonify({"Msg": "Download successfully completed"})
+    except:
+        # message to be printed in the case of error
+        return jsonify({"Msg": "Download error!"})
+    # combine video
+
+
+def Download(link, filelocation):
+    print(link)
+
 
 if __name__ == '__main__':
     app.run(port=sPort, debug=True)

@@ -32,6 +32,10 @@ async function fetchFormats() {
     }
 }
 
+function CombineDownload(){
+    // post to '/combine' with videoURL, audioURL, and filename
+}
+
 function ListingAllFormats(sortedFormats) {
     const container = document.getElementById('formatsContainer');
     container.innerHTML = '';
@@ -56,8 +60,16 @@ function ListingAllFormats(sortedFormats) {
         card.className = 'format-card';
         
         card.innerHTML = `
+            <label class="select-format">
+                <input type="radio" name="${format.format.includes('audio') ? 'audioFormat' : 'videoFormat'}" 
+                       value="${format.url}" 
+                       data-format='${JSON.stringify(format).replace(/'/g, "\\'")}'
+                       ${window.selectedFormats?.[format.format.includes('audio') ? 'audio' : 'video']?.url === format.url ? 'checked' : ''}>
+                Select for combined download
+            </label>
             <p>Format: ${format.format}</p>
-            ${format.codec ? `<p>Codec: ${format.codec}</p>` : ''}`;
+            ${format.codec ? `<p>Codec: ${format.codec}</p>` : ''}
+            `;
         if(format.format.includes('audio')){
             card.innerHTML += `
                 <p>Bitrate: ${format.bitrate || 'N/A'} kbps</p>
@@ -86,6 +98,19 @@ document.getElementById('hideNoCodecCheckbox').addEventListener('change', () => 
     }
 });
 
+
+// Store selected formats { video: {}, audio: {} }
+window.selectedFormats = { video: null, audio: null };
+
+// Handle format selection changes
+document.addEventListener('change', (e) => {
+    if (e.target.matches('input[type="radio"][name="videoFormat"], input[type="radio"][name="audioFormat"]')) {
+        const formatType = e.target.name === 'videoFormat' ? 'video' : 'audio';
+        const formatData = JSON.parse(e.target.dataset.format.replace(/\\'/g, "'"));
+        window.selectedFormats[formatType] = formatData;
+        console.log('Selected formats:', window.selectedFormats);
+    }
+});
 
 function downloadFormat(url) {
     const link = document.createElement('a');
