@@ -1,4 +1,5 @@
 from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
 import yt_dlp
 import os
 import threading
@@ -29,6 +30,12 @@ def download_task(link, format_id, combine=False):
         'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
         'merge_output_format': 'mp4',
         'progress_hooks': [lambda d: tracker.add_file(link, d.get('filename'))],
+        'cookiefile': 'cookies.txt',
+        'referer': 'https://www.youtube.com/',
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept-Language': 'en-US,en;q=0.9',
+        }
     }
 
     try:
@@ -89,12 +96,27 @@ def start_download():
     
     return jsonify({'status': 'Download started', 'download_url': f'/download-file/{link}'})
 
+def clear_download_folder():
+    for filename in os.listdir(DOWNLOAD_FOLDER):
+        file_path = os.path.join(DOWNLOAD_FOLDER, filename)
+        try:
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+        except Exception as e:
+            print(f"Error deleting {file_path}: {e}")
+
 @app.route('/download-file/<path:url>')
 def download_file(url):
     filename = tracker.get_file(url)
     if filename and os.path.exists(filename):
-        return send_file(filename, as_attachment=True)
+        try:
+            response = send_file(filename, as_attachment=True)
+            response.headers["Cache-Control"] = "no-store, max-age=0"
+            return response
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
     return jsonify({'error': 'File not ready or not found'}), 404
 
 if __name__ == '__main__':
+    clear_download_folder()
     app.run(port=8000, debug=True)
