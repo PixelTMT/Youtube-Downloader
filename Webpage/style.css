@@ -5,12 +5,6 @@ body {
     background-color: #f0f2f5;
 }
 
-.container {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 20px;
-}
-
 h1 {
     color: #ff0000;
     text-align: center;
@@ -58,11 +52,28 @@ button:hover {
     border-radius: 4px;
 }
 
+.container {
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+#formatsContainer {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    max-width: 100%;
+}
+
 .formats-section {
+    flex: 1;
+    min-width: 300px;
     margin: 20px 0;
     padding: 15px;
     border: 1px solid #eee;
     border-radius: 4px;
+    background: white;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .formats-section h3 {
