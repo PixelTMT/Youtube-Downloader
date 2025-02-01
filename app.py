@@ -7,10 +7,6 @@ sPort = 3000
 
 @app.route('/')
 def index():
-    vID = request.args.get('v')
-    if vID is not None:
-        # insert vID into input text and get formats
-        print(vID)
     return app.send_static_file('index.html')
 
 @app.route('/formats', methods=['POST'])

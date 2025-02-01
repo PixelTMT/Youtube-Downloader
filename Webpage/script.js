@@ -1,7 +1,12 @@
 async function fetchFormats() {
     const url = document.getElementById('urlInput').value;
+    const button = document.querySelector('button');
+    const spinner = document.getElementById('loadingSpinner');
     
     try {
+        button.disabled = true;
+        spinner.style.display = 'inline-block';
+        
         const response = await fetch('/formats', {
             method: 'POST',
             headers: {
@@ -21,6 +26,9 @@ async function fetchFormats() {
     } catch (error) {
         console.error('Error:', error);
         alert('Failed to fetch formats. Please check the URL and try again.');
+    } finally {
+        button.disabled = false;
+        spinner.style.display = 'none';
     }
 }
 
