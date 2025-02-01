@@ -87,3 +87,13 @@ function downloadFormat(url) {
     link.click();
     document.body.removeChild(link);
 }
+
+// Auto-trigger when page loads with URL parameter
+document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const vID = urlParams.get('v');
+    if (vID) {
+        document.getElementById('urlInput').value = vID;
+        fetchFormats();
+    }
+});
