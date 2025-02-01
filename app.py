@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 import yt_dlp
 
-app = Flask(__name__, static_folder='.', static_url_path='')
+app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 sPort = 3000
 
 
