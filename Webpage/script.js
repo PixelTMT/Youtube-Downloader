@@ -1,6 +1,5 @@
 async function fetchFormats() {
     const url = document.getElementById('urlInput').value;
-    const container = document.getElementById('formatsContainer');
     
     try {
         const response = await fetch('/formats', {
