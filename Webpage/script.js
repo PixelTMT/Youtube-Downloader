@@ -34,14 +34,20 @@ async function fetchFormats() {
         sortedFormats.forEach(format => {
             if (hideNoCodec && (!format.codec || format.codec === 'none')) return;
             
-            const container = format.extension === 'mp4' ? videoContainer : audioContainer;
+            const container = format.format.includes('audio') ? audioContainer : videoContainer;
             const card = document.createElement('div');
             card.className = 'format-card';
             
             card.innerHTML = `
                 <p>Format: ${format.format}</p>
-                ${format.codec ? `<p>Codec: ${format.codec}</p>` : ''}
-                <p>Bitrate: ${format.bitrate || 'N/A'} kbps</p>
+                ${format.codec ? `<p>Codec: ${format.codec}</p>` : ''}`;
+            if(format.format.includes('audio')){
+                card.innerHTML += `
+                    <p>Bitrate: ${format.bitrate || 'N/A'} kbps</p>
+                    <p>Sample Rate: .${format.sampleRate}</p>
+                    `;
+            }
+            card.innerHTML += `
                 <p>Extension: .${format.extension}</p>
                 <p>Filesize: ${(format.filesize / 1024 / 1024).toFixed(2)} MB</p>
                 <button class="download-btn" onclick="downloadFormat('${format.url}')">
