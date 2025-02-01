@@ -3,6 +3,9 @@ async function fetchFormats() {
     const button = document.querySelector('button');
     const spinner = document.getElementById('loadingSpinner');
     
+    window.selectedFormats = { video: null, audio: null };
+    UpdateCombineButton();
+
     try {
         button.disabled = true;
         spinner.style.display = 'inline-block';
@@ -134,6 +137,8 @@ function ListingAllFormats(sortedFormats) {
 document.getElementById('hideNoCodecCheckbox').addEventListener('change', () => {
     if (window.sortedFormats) {
         ListingAllFormats(window.sortedFormats);
+        window.selectedFormats = { video: null, audio: null };
+        UpdateCombineButton();
     }
 });
 
@@ -147,9 +152,21 @@ document.addEventListener('change', (e) => {
         const formatType = e.target.name === 'videoFormat' ? 'video' : 'audio';
         const formatData = JSON.parse(e.target.dataset.format.replace(/\\'/g, "'"));
         window.selectedFormats[formatType] = formatData;
-        console.log('Selected formats:', window.selectedFormats);
+        UpdateCombineButton();
     }
 });
+
+function UpdateCombineButton(){
+    // Update combine button state
+    const combineBtn = document.getElementById('combineBtn');
+    if (window.selectedFormats.video && window.selectedFormats.audio) {
+        combineBtn.disabled = false;
+        combineBtn.style.backgroundColor = '#4CAF50';
+    } else {
+        combineBtn.disabled = true;
+        combineBtn.style.backgroundColor = '#9E9E9E';
+    }
+}
 
 function downloadFormat(url) {
     const link = document.createElement('a');

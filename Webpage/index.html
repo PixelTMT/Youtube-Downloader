@@ -12,7 +12,7 @@
         <div class="input-area">
             <input type="text" id="urlInput" placeholder="Enter YouTube URL...">
             <button onclick="fetchFormats()">Get Formats</button>
-            <button onclick="CombineDownload()" style="margin-left: 10px; background-color: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 4px;">Combine Selected Formats</button>
+            <button id="combineBtn" onclick="CombineDownload()" style="margin-left: 10px; background-color: #9E9E9E; color: white; padding: 8px 16px; border: none; border-radius: 4px;" disabled>Combine Selected Formats</button>
             <span id="loadingSpinner" class="loading" style="display: none;"></span>
 
         </div>

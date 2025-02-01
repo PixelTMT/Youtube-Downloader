@@ -1,8 +1,6 @@
 from flask import Flask, request, jsonify, send_file
 import yt_dlp
 import requests
-import concurrent.futures
-
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 sPort = 3000
 
@@ -82,7 +80,7 @@ def get_video():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=False)
             ydl.download([link])
-            return send_file("downloads/" + f"{info['title']}.{info['ext']}", as_attachment=True)
+            return send_file("downloads/" + f"{info['title']}{info['ext']}", as_attachment=True)
     except:
         # message to be printed in the case of error
         print("Download error!")
@@ -101,14 +99,15 @@ def Download_Combine():
         #with concurrent.futures.ThreadPoolExecutor() as executor:
         #    for url in urls:
         #        executor.submit(Download, url)
+        # Download both formats concurrently
+        import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            print('downloading video')
-            executor.submit(Download, videoURL, 'downloads/v_' + filename)
-            print('downloading audio')
-            executor.submit(Download, audioURL, 'downloads/a_' + filename)
+            video_future = executor.submit(Download, videoURL, 'downloads/v_' + filename)
+            audio_future = executor.submit(Download, audioURL, 'downloads/a_' + filename)
+            concurrent.futures.wait([video_future, audio_future])
 
         # Combine with ffmpeg
-        output_path = f"downloads/{filename}_combined.mp4"
+        output_path = f"downloads/{filename}.mp4"
         ffmpeg_path = 'ffmpeg/ffmpeg.exe'  # Path to ffmpeg executable
         
         # Build ffmpeg command
@@ -139,11 +138,20 @@ def Download_Combine():
 
 
 def Download(link, filelocation):
-    bytes = requests.get(link).content
-    with open(filelocation, 'wb') as file:
-        file.write(bytes)
-        print(f'{filelocation} was downloaded...')
-
+    ydl_opts = {
+        'outtmpl': filelocation,
+        'quiet': True,
+        'no_warnings': True,
+        'format': 'best',
+        'progress_hooks': [lambda d: print(f'Download progress: {d["_percent_str"]}')],
+        'noprogress': False,
+        'external_downloader': 'aria2c',
+        'concurrent_fragment_downloads': 4*2,
+        'http_chunk_size': 1048576/2  # 1 MB chunks
+    }
+    
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        ydl.download([link])
 
 if __name__ == '__main__':
     app.run(port=sPort, debug=True)
