@@ -12,6 +12,12 @@
         <div class="input-area">
             <input type="text" id="urlInput" placeholder="Enter YouTube URL...">
             <button onclick="fetchFormats()">Get Formats</button>
+
+        </div>
+        <div class="filter-group">
+            <label>
+                <input type="checkbox" id="hideNoCodecCheckbox"> Hide formats without codec
+            </label>
         </div>
         <div id="formatsContainer" class="formats-grid"></div>
     </div>

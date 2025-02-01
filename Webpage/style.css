@@ -51,11 +51,33 @@ button:hover {
     gap: 15px;
 }
 
-.format-card {
-    background: white;
+.filter-group {
+    margin: 10px 0;
+    padding: 10px;
+    background: #f5f5f5;
+    border-radius: 4px;
+}
+
+.formats-section {
+    margin: 20px 0;
     padding: 15px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    border: 1px solid #eee;
+    border-radius: 4px;
+}
+
+.formats-section h3 {
+    margin-top: 0;
+    color: #333;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+}
+
+.format-card {
+    border: 1px solid #ccc;
+    padding: 15px;
+    margin: 10px;
+    border-radius: 5px;
+    background: white;
 }
 
 .format-card p {
