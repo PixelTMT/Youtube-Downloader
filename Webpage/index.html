@@ -12,6 +12,7 @@
         <div class="input-area">
             <input type="text" id="urlInput" placeholder="Enter YouTube URL...">
             <button onclick="fetchFormats()">Get Formats</button>
+            <button onclick="CombineDownload()" style="margin-left: 10px; background-color: #4CAF50; color: white; padding: 8px 16px; border: none; border-radius: 4px;">Combine Selected Formats</button>
             <span id="loadingSpinner" class="loading" style="display: none;"></span>
 
         </div>
@@ -20,9 +21,6 @@
                 <input type="checkbox" id="hideNoCodecCheckbox"> Hide formats without codec
             </label>
         </div>
-        <button class="download-btn" onclick="CombineDownload()">
-            Combine & Download
-        </button>
         <div id="formatsContainer" class="formats-grid"></div>
     </div>
     <script src="script.js"></script>

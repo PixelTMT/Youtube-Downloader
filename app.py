@@ -1,5 +1,7 @@
 from flask import Flask, request, jsonify, send_file
 import yt_dlp
+import requests
+import concurrent.futures
 
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 sPort = 3000
@@ -95,13 +97,41 @@ def Download_Combine():
 
     try:
         # attempt to download without errors
-        print('downloading video')
-        Download(videoURL, 'downloads/v_' + filename)
-        print('downloading audio')
-        Download(audioURL, 'downloads/a_' + filename)
+        #urls = [videoURL, audioURL]
+        #with concurrent.futures.ThreadPoolExecutor() as executor:
+        #    for url in urls:
+        #        executor.submit(Download, url)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            print('downloading video')
+            executor.submit(Download, videoURL, 'downloads/v_' + filename)
+            print('downloading audio')
+            executor.submit(Download, audioURL, 'downloads/a_' + filename)
 
-        print('combining video and audio')
-        return jsonify({"Msg": "Download successfully completed"})
+        # Combine with ffmpeg
+        output_path = f"downloads/{filename}_combined.mp4"
+        ffmpeg_path = 'ffmpeg/ffmpeg.exe'  # Path to ffmpeg executable
+        
+        # Build ffmpeg command
+        command = [
+            ffmpeg_path,
+            '-i', f'downloads/v_{filename}',
+            '-i', f'downloads/a_{filename}',
+            '-c:v', 'copy',
+            '-c:a', 'aac',
+            '-map', '0:v:0',
+            '-map', '1:a:0',
+            '-y',  # Overwrite output file if exists
+            output_path
+        ]
+        
+        # Run ffmpeg command
+        import subprocess
+        result = subprocess.run(command, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            raise Exception(f"FFmpeg error: {result.stderr}")
+            
+        return send_file(output_path, as_attachment=True)
     except:
         # message to be printed in the case of error
         return jsonify({"Msg": "Download error!"})
@@ -109,7 +139,10 @@ def Download_Combine():
 
 
 def Download(link, filelocation):
-    print(link)
+    bytes = requests.get(link).content
+    with open(filelocation, 'wb') as file:
+        file.write(bytes)
+        print(f'{filelocation} was downloaded...')
 
 
 if __name__ == '__main__':

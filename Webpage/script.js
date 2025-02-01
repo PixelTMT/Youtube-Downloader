@@ -33,7 +33,46 @@ async function fetchFormats() {
 }
 
 function CombineDownload(){
-    // post to '/combine' with videoURL, audioURL, and filename
+    if (!window.selectedFormats.video || !window.selectedFormats.audio) {
+        alert('Please select both video and audio formats');
+        return;
+    }
+
+    const spinner = document.getElementById('loadingSpinner');
+    spinner.style.display = 'inline-block';
+
+    fetch('/combine', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            videoURL: window.selectedFormats.video.url,
+            audioURL: window.selectedFormats.audio.url,
+            filename: window.selectedFormats.video.format.replace(/[^a-z0-9]/gi, '_') // Sanitize filename
+        })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Combination failed');
+        return response.blob();
+    })
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${window.selectedFormats.video.format}_combined.mp4`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to combine formats. Please try again.');
+    })
+    .finally(() => {
+        spinner.style.display = 'none';
+    });
 }
 
 function ListingAllFormats(sortedFormats) {
