@@ -32,7 +32,7 @@ def get_formats():
             formats.append({
                     'codec': f.get('acodec', f.get('vcodec', f.get('acodec'))),
                     'format': f['format'],
-                    'samplesRate': f.get('asr'),
+                    'sampleRate': f.get('asr'),
                     'bitrate': f.get('abr'),
                     'extension': f['ext'],
                     'filesize': f.get('filesize', 0),
