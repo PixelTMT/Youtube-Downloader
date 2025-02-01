@@ -6,7 +6,7 @@ def download(link):
     ydl_opts = {
         'format': 'best[ext=mp4]',  # Download best MP4 format without merging
         'outtmpl':
-        '%(title)s.%(ext)s',  # formatting the file name to be VideoName.mp4
+        "downloads/" + '%(title)s.%(ext)s',  # formatting the file name to be VideoName.mp4
     }
     try:
         # attempt to download without errors

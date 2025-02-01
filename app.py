@@ -1,49 +1,9 @@
-from flask import Flask, request, jsonify, send_file
-from flask_cors import CORS
+from flask import Flask, request, jsonify
 import yt_dlp
-import os
-import threading
-from pathlib import Path
 
 app = Flask(__name__, static_folder='.', static_url_path='')
-DOWNLOAD_FOLDER = 'downloads'
-Path(DOWNLOAD_FOLDER).mkdir(exist_ok=True)
+sPort = 3000
 
-class DownloadTracker:
-    def __init__(self):
-        self.lock = threading.Lock()
-        self.files = {}
-
-    def add_file(self, url, filename):
-        with self.lock:
-            self.files[url] = filename
-
-    def get_file(self, url):
-        with self.lock:
-            return self.files.get(url)
-
-tracker = DownloadTracker()
-
-def download_task(link, format_id, combine=False):
-    ydl_opts = {
-        'format': f'{format_id}' + ('+bestaudio' if combine else ''),
-        'outtmpl': f'{DOWNLOAD_FOLDER}/%(title)s.%(ext)s',
-        'merge_output_format': 'mp4',
-        'progress_hooks': [lambda d: tracker.add_file(link, d.get('filename'))],
-        'cookiefile': 'cookies.txt',
-        'referer': 'https://www.youtube.com/',
-        'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-        }
-    }
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(link, download=True)
-            tracker.add_file(link, ydl.prepare_filename(info))
-    except Exception as e:
-        print(f"Download error: {str(e)}")
 
 @app.route('/')
 def index():
@@ -67,56 +27,20 @@ def get_formats():
         info = ydl.extract_info(link, download=False)
         
         for f in info['formats']:
-            if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
-                formats.append({
-                    'format_id': f['format_id'],
-                    'resolution': f.get('format_note', f['ext']),
+            if(f.get('format_note') == 'storyboard'):
+                continue
+            formats.append({
+                    'codec': f.get('acodec', f.get('vcodec', f.get('acodec'))),
+                    'format': f['format'],
+                    'samplesRate': f.get('asr'),
+                    'bitrate': f.get('abr'),
                     'extension': f['ext'],
-                    'filesize': f.get('filesize', 0)
-                })
-            elif f.get('acodec') != 'none':
-                formats.append({
-                    'format_id': f['format_id'],
-                    'bitrate': f.get('abr', 0),
-                    'extension': f['ext'],
-                    'filesize': f.get('filesize', 0)
+                    'filesize': f.get('filesize', 0),
+                    'url': f.get('url')
                 })
     
     return jsonify(formats)
 
-@app.route('/download', methods=['POST'])
-def start_download():
-    data = request.json
-    link = data['url']
-    format_id = data['format_id']
-    combine = data['combine']
-    
-    thread = threading.Thread(target=download_task, args=(link, format_id, combine))
-    thread.start()
-    
-    return jsonify({'status': 'Download started', 'download_url': f'/download-file/{link}'})
-
-def clear_download_folder():
-    for filename in os.listdir(DOWNLOAD_FOLDER):
-        file_path = os.path.join(DOWNLOAD_FOLDER, filename)
-        try:
-            if os.path.isfile(file_path):
-                os.unlink(file_path)
-        except Exception as e:
-            print(f"Error deleting {file_path}: {e}")
-
-@app.route('/download-file/<path:url>')
-def download_file(url):
-    filename = tracker.get_file(url)
-    if filename and os.path.exists(filename):
-        try:
-            response = send_file(filename, as_attachment=True)
-            response.headers["Cache-Control"] = "no-store, max-age=0"
-            return response
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
-    return jsonify({'error': 'File not ready or not found'}), 404
 
 if __name__ == '__main__':
-    clear_download_folder()
-    app.run(port=8000, debug=True)
+    app.run(port=sPort, debug=True)
