@@ -1,14 +1,16 @@
+window.selectedFormats = {currentFormat: null , video: null, audio: null };
+
 async function fetchFormats() {
     const url = document.getElementById('urlInput').value;
     const button = document.querySelector('button');
-    const spinner = document.getElementById('loadingSpinner');
+    const loadingBar = document.getElementById('loadingBar');
     
     window.selectedFormats = { video: null, audio: null };
     UpdateCombineButton();
 
     try {
         button.disabled = true;
-        spinner.style.display = 'inline-block';
+        loadingBar.style.display = 'block';
         
         const response = await fetch('/formats', {
             method: 'POST',
@@ -26,6 +28,7 @@ async function fetchFormats() {
         document.getElementById('videoTitle').textContent = title;
         document.getElementById('videoThumbnail').src = thumbnail;
         document.getElementById('videoInfo').style.display = 'block';
+        window.selectedFormats['currentFormat'] = title;
 
         // Sort formats by filesize descending
         const sortedFormats = formats.sort((a, b) => b.filesize - a.filesize);
@@ -36,7 +39,7 @@ async function fetchFormats() {
         alert('Failed to fetch formats. Please check the URL and try again.');
     } finally {
         button.disabled = false;
-        spinner.style.display = 'none';
+        loadingBar.style.display = 'none';
     }
 }
 
@@ -47,7 +50,7 @@ function CombineDownload(){
     }
 
     const spinner = document.getElementById('loadingSpinner');
-    spinner.style.display = 'inline-block';
+    loadingBar.style.display = 'block';
 
     fetch('/combine', {
         method: 'POST',
@@ -57,7 +60,7 @@ function CombineDownload(){
         body: JSON.stringify({
             videoURL: window.selectedFormats.video.url,
             audioURL: window.selectedFormats.audio.url,
-            filename: window.selectedFormats.video.format.replace(/[^a-z0-9]/gi, '_') // Sanitize filename
+            filename: window.selectedFormats['currentFormat'].replace(/[^a-z0-9]/gi, '_') // Sanitize filename
         })
     })
     .then(response => {
@@ -68,7 +71,7 @@ function CombineDownload(){
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${window.selectedFormats.video.format}_combined.mp4`;
+        a.download = `${window.selectedFormats['currentFormat']}.mp4`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -133,9 +136,6 @@ function ListingAllFormats(sortedFormats) {
     container.appendChild(videoContainer);
     container.appendChild(audioContainer);
 }
-
-// Store selected formats { video: {}, audio: {} }
-window.selectedFormats = { video: null, audio: null };
 
 // Handle format selection changes
 document.addEventListener('change', (e) => {

@@ -13,9 +13,8 @@
             <input type="text" id="urlInput" placeholder="Enter YouTube URL...">
             <button onclick="fetchFormats()">Get Formats</button>
             <button id="combineBtn" onclick="CombineDownload()" style="margin-left: 10px; background-color: #9E9E9E; color: white; padding: 8px 16px; border: none; border-radius: 4px;" disabled>Combine Selected Formats</button>
-            <span id="loadingSpinner" class="loading" style="display: none;"></span>
-
         </div>
+        <div id="loadingBar" class="loading-bar" style="display: none;"></div>
         <div id="videoInfo" style="display: none; margin: 20px 0; text-align: center;">
             <h2 id="videoTitle" style="margin-bottom: 10px;"></h2>
             <img id="videoThumbnail" style="max-width: 480px; border-radius: 8px; margin: 0 auto;">
