@@ -159,7 +159,6 @@ def Download_Combine():
 def Download(link, filelocation, ydl_opts=None):
     filelocation = 'downloads/' + slugify(filelocation)
     if(not ydl_opts):
-        print('create ydl')
         ydl_opts = {
             'outtmpl': filelocation,
             'quiet': True,
