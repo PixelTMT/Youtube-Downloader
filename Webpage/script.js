@@ -10,7 +10,7 @@ async function fetchFormats() {
 
     try {
         button.disabled = true;
-        loadingBar.style.display = 'block';
+        SetLoading(true);
         
         const response = await fetch('/formats', {
             method: 'POST',
@@ -39,7 +39,7 @@ async function fetchFormats() {
         alert('Failed to fetch formats. Please check the URL and try again.');
     } finally {
         button.disabled = false;
-        loadingBar.style.display = 'none';
+        SetLoading(false);
     }
 }
 
@@ -49,7 +49,7 @@ function CombineDownload(){
         return;
     }
     
-    loadingBar.style.display = 'block';
+    SetLoading(true);
 
     fetch('/combine', {
         method: 'POST',
@@ -81,7 +81,7 @@ function CombineDownload(){
         alert('Failed to combine formats. Please try again.');
     })
     .finally(() => {
-        loadingBar.style.display = 'none';
+        SetLoading(false);
     });
 }
 
@@ -188,7 +188,7 @@ function downloadFormat(url, filename) {
 
 function SetLoading(state){
     const loadingBar = document.getElementById('loadingBar');
-    if(state == true){
+    if(state){
         loadingBar.style.display = 'block';
     }
     else{
