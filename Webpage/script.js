@@ -20,8 +20,13 @@ async function fetchFormats() {
 
         if (!response.ok) throw new Error('Failed to fetch formats');
         
-        const formats = await response.json();
+        const {title, thumbnail, formats} = await response.json();
         
+        // Update video title and thumbnail
+        document.getElementById('videoTitle').textContent = title;
+        document.getElementById('videoThumbnail').src = thumbnail;
+        document.getElementById('videoInfo').style.display = 'block';
+
         // Sort formats by filesize descending
         const sortedFormats = formats.sort((a, b) => b.filesize - a.filesize);
         window.sortedFormats = sortedFormats; // Store globally
@@ -91,11 +96,7 @@ function ListingAllFormats(sortedFormats) {
     audioContainer.className = 'formats-section';
     audioContainer.innerHTML = '<h3>Audio Formats</h3>';
 
-    // Get checkbox state
-    const hideNoCodec = document.getElementById('hideNoCodecCheckbox').checked;
-
     sortedFormats.forEach(format => {
-        if (hideNoCodec && (!format.codec || format.codec === 'none')) return;
         
         const targetContainer = format.format.includes('audio') ? audioContainer : videoContainer;
         const card = document.createElement('div');
@@ -121,7 +122,7 @@ function ListingAllFormats(sortedFormats) {
         card.innerHTML += `
             <p>Extension: .${format.extension}</p>
             <p>Filesize: ${(format.filesize / 1024 / 1024).toFixed(2)} MB</p>
-            <button class="download-btn" onclick="downloadFormat('${format.url}')">
+            <button class="download-btn" onclick="downloadFormat('${format.url}', '${format.title+format.format}')">
                 Download
             </button>
         `;
@@ -132,16 +133,6 @@ function ListingAllFormats(sortedFormats) {
     container.appendChild(videoContainer);
     container.appendChild(audioContainer);
 }
-
-// Add checkbox change listener
-document.getElementById('hideNoCodecCheckbox').addEventListener('change', () => {
-    if (window.sortedFormats) {
-        ListingAllFormats(window.sortedFormats);
-        window.selectedFormats = { video: null, audio: null };
-        UpdateCombineButton();
-    }
-});
-
 
 // Store selected formats { video: {}, audio: {} }
 window.selectedFormats = { video: null, audio: null };
@@ -168,15 +159,15 @@ function UpdateCombineButton(){
     }
 }
 
-function downloadFormat(url) {
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = true;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
+function downloadFormat(url, filename) {
+    let element = document.createElement('a');
+    element.setAttribute('href', url);
+    element.setAttribute('download', filename);
+    document.body.appendChild(element);
+    element.click();
 
+    document.body.removeChild(element);
+}
 // Auto-trigger when page loads with URL parameter
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);

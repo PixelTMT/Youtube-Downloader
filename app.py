@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, send_file
 import yt_dlp
-import requests
+import os, shutil
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 sPort = 3000
 
@@ -60,7 +60,11 @@ def get_formats():
                     'url': f.get('url')
                 })
     
-    return jsonify(formats)
+    return jsonify({
+        'title': info.get('title'),
+        'thumbnail': info.get('thumbnail'),
+        'formats': formats
+    })
 
 @app.route('/watch', methods=['GET'])
 def get_video():
@@ -153,5 +157,17 @@ def Download(link, filelocation):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([link])
 
+def empty_folders(folder):
+    for filename in os.listdir(folder):
+        file_path = os.path.join(folder, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)
+        except Exception as e:
+            print('Failed to delete %s. Reason: %s' % (file_path, e))
+
 if __name__ == '__main__':
+    empty_folders('./downloads')
     app.run(port=sPort, debug=True)
