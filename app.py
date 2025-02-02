@@ -98,7 +98,6 @@ def get_video():
             fileLocation = filename
             info = ydl.extract_info(link, download=False)
             saveLocation = Download(link, fileLocation, ydl_opts)
-            print(saveLocation)
             return send_file(saveLocation, as_attachment=True, download_name=filename)
     except:
         # message to be printed in the case of error
@@ -131,7 +130,6 @@ def Download_Combine():
         fileOutputname = f"{filename}.mp4"
         output_path = 'downloads/' + slugify(fileOutputname) + '.mp4'
         ffmpeg_path = 'ffmpeg/ffmpeg.exe'  # Path to ffmpeg executable
-        print(output_path)
         # Build ffmpeg command
         command = [
             ffmpeg_path,
