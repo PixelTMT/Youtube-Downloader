@@ -1,7 +1,8 @@
 from flask import Flask, request, Response, jsonify, send_file
 import yt_dlp
 import os, shutil
-import requests
+import re
+import unicodedata
 
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 sPort = 3000
@@ -16,9 +17,9 @@ def proxy():
     data = request.json
     url = data['url']
     filename = data['filename']
-    location = 'downloads/' + data['filename']
-    Download(url, location)
-    return send_file(location, as_attachment=True, download_name=filename)
+    location = data['filename']
+    saveLocation = Download(url, location)
+    return send_file(saveLocation, as_attachment=True, download_name=filename)
 
 @app.route('/fullformats', methods=['POST'])
 def get_fullformats():
@@ -88,14 +89,17 @@ def get_video():
         'ignoreerrors': True,
         'extractor_args': {'youtube': {'skip': ['dash', 'hls']}},
         'outtmpl':
-        "downloads/" + '%(title)s.%(ext)s',  # formatting the file name to be VideoName.mp4
+        '%(title)s.%(ext)s',  # formatting the file name to be VideoName.mp4
     }
     try:
         # attempt to download without errors
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            filename = f"{info['title']}{info['ext']}"
+            fileLocation = filename
             info = ydl.extract_info(link, download=False)
-            ydl.download([link])
-            return send_file("downloads/" + f"{info['title']}{info['ext']}", as_attachment=True)
+            saveLocation = Download(link, fileLocation, ydl_opts)
+            print(saveLocation)
+            return send_file(saveLocation, as_attachment=True, download_name=filename)
     except:
         # message to be printed in the case of error
         print("Download error!")
@@ -116,20 +120,23 @@ def Download_Combine():
         #        executor.submit(Download, url)
         # Download both formats concurrently
         import concurrent.futures
+        videoName = slugify('v_' + filename)
+        audioName = slugify('a_' + filename)
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            video_future = executor.submit(Download, videoURL, 'downloads/v_' + filename)
-            audio_future = executor.submit(Download, audioURL, 'downloads/a_' + filename)
+            video_future = executor.submit(Download, videoURL, videoName)
+            audio_future = executor.submit(Download, audioURL, audioName)
             concurrent.futures.wait([video_future, audio_future])
 
         # Combine with ffmpeg
-        output_path = f"downloads/{filename}.mp4"
+        fileOutputname = f"{filename}.mp4"
+        output_path = 'downloads/' + slugify(fileOutputname) + '.mp4'
         ffmpeg_path = 'ffmpeg/ffmpeg.exe'  # Path to ffmpeg executable
-        
+        print(output_path)
         # Build ffmpeg command
         command = [
             ffmpeg_path,
-            '-i', f'downloads/v_{filename}',
-            '-i', f'downloads/a_{filename}',
+            '-i', f'downloads/{videoName}',
+            '-i', f'downloads/{audioName}',
             '-c:v', 'copy',
             '-c:a', 'aac',
             '-map', '0:v:0',
@@ -145,28 +152,46 @@ def Download_Combine():
         if result.returncode != 0:
             raise Exception(f"FFmpeg error: {result.stderr}")
             
-        return send_file(output_path, as_attachment=True)
+        return send_file(output_path, as_attachment=True, download_name=fileOutputname)
     except:
         # message to be printed in the case of error
         return jsonify({"Msg": "Download error!"})
     # combine video
 
-
-def Download(link, filelocation):
-    ydl_opts = {
-        'outtmpl': filelocation,
-        'quiet': True,
-        'no_warnings': True,
-        'format': 'best',
-        'progress_hooks': [lambda d: print(f'Download progress: {d["_percent_str"]}')],
-        'noprogress': False,
-        'external_downloader': 'aria2c',
-        'concurrent_fragment_downloads': 4*2,
-        'http_chunk_size': 1048576/2  # 1 MB chunks
-    }
-    
+def Download(link, filelocation, ydl_opts=None):
+    filelocation = 'downloads/' + slugify(filelocation)
+    if(not ydl_opts):
+        print('create ydl')
+        ydl_opts = {
+            'outtmpl': filelocation,
+            'quiet': True,
+            'no_warnings': True,
+            'format': 'best',
+            'progress_hooks': [lambda d: print(f'Download progress: {d["_percent_str"]}')],
+            'noprogress': False,
+            'external_downloader': 'aria2c',
+            'concurrent_fragment_downloads': 4*2,
+            'http_chunk_size': 1048576/2  # 1 MB chunks
+        }
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         ydl.download([link])
+    return filelocation
+
+def slugify(value, allow_unicode=False):
+    """
+    Taken from https://github.com/django/django/blob/master/django/utils/text.py
+    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
+    dashes to single dashes. Remove characters that aren't alphanumerics,
+    underscores, or hyphens. Convert to lowercase. Also strip leading and
+    trailing whitespace, dashes, and underscores.
+    """
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize('NFKC', value)
+    else:
+        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
+    value = re.sub(r'[^\w\s-]', '', value.lower())
+    return re.sub(r'[-\s]+', '-', value).strip('-_')
 
 def empty_folders(folder):
     for filename in os.listdir(folder):

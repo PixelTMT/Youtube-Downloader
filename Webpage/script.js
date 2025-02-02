@@ -32,7 +32,7 @@ async function fetchFormats() {
         console.log(window.selectedFormats['currentFormat']);
         // Sort formats by filesize descending
         const sortedFormats = formats.sort((a, b) => b.filesize - a.filesize);
-        window.sortedFormats = sortedFormats; // Store globally
+        window.sortedFormats = sortedFormats;
         ListingAllFormats(sortedFormats);
     } catch (error) {
         console.error('Error:', error);
@@ -49,8 +49,10 @@ function CombineDownload(){
         return;
     }
     
+    const combineBtn = document.getElementById('combineBtn');
+    combineBtn.disabled = true;
     SetLoading(true);
-
+    
     fetch('/combine', {
         method: 'POST',
         headers: {
@@ -59,7 +61,7 @@ function CombineDownload(){
         body: JSON.stringify({
             videoURL: window.selectedFormats.video.url,
             audioURL: window.selectedFormats.audio.url,
-            filename: window.selectedFormats['currentFormat'].replace(/[^a-z0-9]/gi, '_') // Sanitize filename
+            filename: window.selectedFormats['currentFormat'] // Sanitize filename
         })
     })
     .then(response => {
@@ -81,6 +83,8 @@ function CombineDownload(){
         alert('Failed to combine formats. Please try again.');
     })
     .finally(() => {
+        const combineBtn = document.getElementById('combineBtn');
+        combineBtn.disabled = false;
         SetLoading(false);
     });
 }
@@ -159,6 +163,7 @@ function UpdateCombineButton(){
 }
 
 function downloadFormat(url, filename) {
+    document.querySelectorAll('.download-btn').forEach(btn => btn.disabled = true);
     SetLoading(true);
     fetch('/proxy', {
         method: 'POST',
@@ -183,6 +188,7 @@ function downloadFormat(url, filename) {
     })
     .then(()=>{
         SetLoading(false);
+        document.querySelectorAll('.download-btn').forEach(btn => btn.disabled = false);
     });
 }
 
