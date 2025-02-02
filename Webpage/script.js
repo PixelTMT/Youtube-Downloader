@@ -29,7 +29,7 @@ async function fetchFormats() {
         document.getElementById('videoThumbnail').src = thumbnail;
         document.getElementById('videoInfo').style.display = 'block';
         window.selectedFormats['currentFormat'] = title;
-
+        console.log(window.selectedFormats['currentFormat']);
         // Sort formats by filesize descending
         const sortedFormats = formats.sort((a, b) => b.filesize - a.filesize);
         window.sortedFormats = sortedFormats; // Store globally
@@ -48,8 +48,7 @@ function CombineDownload(){
         alert('Please select both video and audio formats');
         return;
     }
-
-    const spinner = document.getElementById('loadingSpinner');
+    
     loadingBar.style.display = 'block';
 
     fetch('/combine', {
@@ -82,7 +81,7 @@ function CombineDownload(){
         alert('Failed to combine formats. Please try again.');
     })
     .finally(() => {
-        spinner.style.display = 'none';
+        loadingBar.style.display = 'none';
     });
 }
 
@@ -125,7 +124,7 @@ function ListingAllFormats(sortedFormats) {
         card.innerHTML += `
             <p>Extension: .${format.extension}</p>
             <p>Filesize: ${(format.filesize / 1024 / 1024).toFixed(2)} MB</p>
-            <button class="download-btn" onclick="downloadFormat('${format.url}', '${format.title+format.format}')">
+            <button class="download-btn" onclick="downloadFormat('${format.url}', '${window.selectedFormats['currentFormat']}.${format.extension}')">
                 Download
             </button>
         `;
@@ -160,14 +159,43 @@ function UpdateCombineButton(){
 }
 
 function downloadFormat(url, filename) {
-    let element = document.createElement('a');
-    element.setAttribute('href', url);
-    element.setAttribute('download', filename);
-    document.body.appendChild(element);
-    element.click();
-
-    document.body.removeChild(element);
+    SetLoading(true);
+    fetch('/proxy', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: url, filename: filename})
+    })
+    .then(response => {
+        if (!response.ok) throw new Error('Combination failed');
+        return response.blob();
+    })
+    .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    })
+    .then(()=>{
+        SetLoading(false);
+    });
 }
+
+function SetLoading(state){
+    const loadingBar = document.getElementById('loadingBar');
+    if(state == true){
+        loadingBar.style.display = 'block';
+    }
+    else{
+        loadingBar.style.display = 'none';
+    }
+}
+
 // Auto-trigger when page loads with URL parameter
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);

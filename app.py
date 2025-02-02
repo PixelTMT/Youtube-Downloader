@@ -1,6 +1,8 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, Response, jsonify, send_file
 import yt_dlp
 import os, shutil
+import requests
+
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 sPort = 3000
 
@@ -8,6 +10,15 @@ sPort = 3000
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
+
+@app.route('/proxy', methods=['POST'])
+def proxy():
+    data = request.json
+    url = data['url']
+    filename = data['filename']
+    location = 'downloads/' + data['filename']
+    Download(url, location)
+    return send_file(location, as_attachment=True, download_name=filename)
 
 @app.route('/fullformats', methods=['POST'])
 def get_fullformats():
