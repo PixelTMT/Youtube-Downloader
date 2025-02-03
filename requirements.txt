@@ -1,3 +1,4 @@
 Flask==3.1.0
 Requests==2.32.3
 yt_dlp==2025.1.26
+tinytag==2.0.0

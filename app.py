@@ -3,6 +3,7 @@ import yt_dlp
 import os, shutil
 import re
 import unicodedata
+from tinytag import TinyTag
 
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 sPort = 3000
@@ -38,6 +39,27 @@ def get_fullformats():
         info = ydl.extract_info(link, download=False)
         for f in info['formats']:
             formats.append(f)
+    
+    return jsonify(formats)
+
+@app.route('/info', methods=['POST'])
+def get_info():
+    data = request.json
+    link = data['url']
+    
+    ydl_opts = {
+        'format': 'best',
+        'quiet': True,
+        'no_warnings': True,
+        'ignoreerrors': True,
+        'extractor_args': {'youtube': {'skip': ['dash', 'hls']}}
+    }
+    
+    formats = []
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(link, download=False)
+        formats.append(info)
+            
     
     return jsonify(formats)
 
@@ -118,8 +140,8 @@ def Download_Combine():
         #        executor.submit(Download, url)
         # Download both formats concurrently
         import concurrent.futures
-        videoName = slugify('v_' + filename)
-        audioName = slugify('a_' + filename)
+        videoName = slugify('v_' + filename, allow_unicode=True)
+        audioName = slugify('a_' + filename, allow_unicode=True)
         with concurrent.futures.ThreadPoolExecutor() as executor:
             video_future = executor.submit(Download, videoURL, videoName)
             audio_future = executor.submit(Download, audioURL, audioName)
@@ -169,24 +191,33 @@ def Download(link, filelocation, ydl_opts=None):
             'concurrent_fragment_downloads': 4*2,
             'http_chunk_size': 1048576/2  # 1 MB chunks
         }
+
+
+
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(link, download=False)
         ydl.download([link])
+
+        if 'Music' in info['categories'] and TinyTag.is_supported(filelocation=True):
+            tag = TinyTag.get(filelocation, image=True)
+            tag.title = info.get('title', '')
+            tag.track = info.get('track', '')
+            tag.artist = info.get('artists', info.get('artist', ''))
+            tag.album = info.get('album', info.get('alt_title', ''))
+            tag.images = None
+
+
     return filelocation
 
 def slugify(value, allow_unicode=False):
-    """
-    Taken from https://github.com/django/django/blob/master/django/utils/text.py
-    Convert to ASCII if 'allow_unicode' is False. Convert spaces or repeated
-    dashes to single dashes. Remove characters that aren't alphanumerics,
-    underscores, or hyphens. Convert to lowercase. Also strip leading and
-    trailing whitespace, dashes, and underscores.
-    """
     value = str(value)
     if allow_unicode:
-        value = unicodedata.normalize('NFKC', value)
+        value = unicodedata.normalize('NFC', value)
+        # Allow Unicode letters/numbers and preserve case
+        value = re.sub(r'[^\w\s-]', '', value, flags=re.UNICODE)
     else:
         value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-    value = re.sub(r'[^\w\s-]', '', value.lower())
+        value = re.sub(r'[^\w\s-]', '', value.lower())
     return re.sub(r'[-\s]+', '-', value).strip('-_')
 
 def empty_folders(folder):
