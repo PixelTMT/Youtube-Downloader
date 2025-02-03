@@ -17,8 +17,7 @@ def proxy():
     data = request.json
     url = data['url']
     filename = data['filename']
-    location = data['filename']
-    saveLocation = Download(url, location)
+    saveLocation = Download(url, filename)
     return send_file(saveLocation, as_attachment=True, download_name=filename)
 
 @app.route('/fullformats', methods=['POST'])
