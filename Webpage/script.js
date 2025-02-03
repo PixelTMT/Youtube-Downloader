@@ -1,11 +1,10 @@
-window.selectedFormats = {currentFormat: null , video: null, audio: null };
+window.selectedFormats = {currentFormat: null, original: null , video: null, audio: null };
 
 async function fetchFormats() {
     const url = document.getElementById('urlInput').value;
     const button = document.querySelector('button');
-    const loadingBar = document.getElementById('loadingBar');
     
-    window.selectedFormats = { video: null, audio: null };
+    window.selectedFormats = {currentFormat: null, original: document.getElementById('urlInput').value , video: null, audio: null };
     UpdateCombineButton();
 
     try {
@@ -170,7 +169,7 @@ function downloadFormat(url, filename) {
         headers: {
             'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url: url, filename: filename})
+        body: JSON.stringify({ url: url, original: window.selectedFormats['original'], filename: filename})
     })
     .then(response => {
         if (!response.ok) throw new Error('Combination failed');

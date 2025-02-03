@@ -3,7 +3,9 @@ import yt_dlp
 import os, shutil
 import re
 import unicodedata
-from tinytag import TinyTag
+from mutagen.easyid3 import EasyID3
+import mutagen.id3
+import requests
 
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 sPort = 3000
@@ -17,8 +19,9 @@ def index():
 def proxy():
     data = request.json
     url = data['url']
+    original = data['original']
     filename = data['filename']
-    saveLocation = Download(url, filename)
+    saveLocation = Download(link=url, original=original, filelocation=filename)
     return send_file(saveLocation, as_attachment=True, download_name=filename)
 
 @app.route('/fullformats', methods=['POST'])
@@ -67,7 +70,9 @@ def get_info():
 def get_formats():
     data = request.json
     link = data['url']
-    
+    return get_format(link)
+
+def get_format(link):
     ydl_opts = {
         'format': 'best',
         'quiet': True,
@@ -115,10 +120,10 @@ def get_video():
     try:
         # attempt to download without errors
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            filename = f"{info['title']}{info['ext']}"
-            fileLocation = filename
             info = ydl.extract_info(link, download=False)
-            saveLocation = Download(link, fileLocation, ydl_opts)
+            filename = f"{info['title']}.{info['ext']}"
+            fileLocation = filename
+            saveLocation = Download(link, '', fileLocation, ydl_opts)
             return send_file(saveLocation, as_attachment=True, download_name=filename)
     except:
         # message to be printed in the case of error
@@ -130,6 +135,7 @@ def Download_Combine():
     data = request.json
     videoURL = data['videoURL']
     audioURL = data['audioURL']
+    original = data['original']
     filename = data['filename']
 
     try:
@@ -143,13 +149,13 @@ def Download_Combine():
         videoName = slugify('v_' + filename, allow_unicode=True)
         audioName = slugify('a_' + filename, allow_unicode=True)
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            video_future = executor.submit(Download, videoURL, videoName)
-            audio_future = executor.submit(Download, audioURL, audioName)
+            video_future = executor.submit(Download, videoURL, original, videoName)
+            audio_future = executor.submit(Download, audioURL, original, audioName)
             concurrent.futures.wait([video_future, audio_future])
 
         # Combine with ffmpeg
         fileOutputname = f"{filename}.mp4"
-        output_path = 'downloads/' + slugify(fileOutputname) + '.mp4'
+        output_path = 'downloads/' + slugify(fileOutputname, True) + '.mp4'
         ffmpeg_path = 'ffmpeg/ffmpeg.exe'  # Path to ffmpeg executable
         # Build ffmpeg command
         command = [
@@ -177,48 +183,92 @@ def Download_Combine():
         return jsonify({"Msg": "Download error!"})
     # combine video
 
-def Download(link, filelocation, ydl_opts=None):
-    filelocation = 'downloads/' + slugify(filelocation)
-    if(not ydl_opts):
-        ydl_opts = {
-            'outtmpl': filelocation,
-            'quiet': True,
-            'no_warnings': True,
-            'format': 'best',
-            'progress_hooks': [lambda d: print(f'Download progress: {d["_percent_str"]}')],
-            'noprogress': False,
-            'external_downloader': 'aria2c',
-            'concurrent_fragment_downloads': 4*2,
-            'http_chunk_size': 1048576/2  # 1 MB chunks
-        }
+def Download(link, original, filelocation, ydl_opts=None):
+    _, _, ext = filelocation.partition('.')
+    newfilelocation = 'downloads/' + slugify(filelocation, True) + '.' + ext
+    try:
+        if(not ydl_opts):
+            ydl_opts = {
+                'outtmpl': newfilelocation,
+                'quiet': True,
+                'no_warnings': True,
+                'format': 'best',
+                'progress_hooks': [lambda d: print(f'Download progress: {d["_percent_str"]}')],
+                'noprogress': False,
+                'external_downloader': 'aria2c',
+                'concurrent_fragment_downloads': 4*2,
+                'http_chunk_size': 1048576/2  # 1 MB chunks
+            }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            download_info = ydl.extract_info(link, download=False)
+            ydl.download([link])
+
+            info = yt_dlp.YoutubeDL(ydl_opts).extract_info(original, download=False)
+            if 'Music' in info['categories'] and ext != 'webm':
+                # Only attempt metadata for supported formats
+                if newfilelocation.endswith('.mp3'):
+                    audio = EasyID3(newfilelocation)
+                    audio['title'] = info.get('title', '')
+                    audio['artist'] = info.get('artists', info.get('artist', ''))
+                    audio['album'] = info.get('album', info.get('alt_title', ''))
+                    audio.save()
+                    
+                    if image_data := download_thumbnail(info):
+                        audio = mutagen.id3.ID3(newfilelocation)
+                        audio.add(mutagen.id3.APIC(
+                            encoding=3,
+                            mime='image/jpeg',
+                            type=3,
+                            desc='Cover',
+                            data=image_data
+                        ))
+                        audio.save()
+                    else:  # Skip metadata for unsupported formats
+                        pass
+                elif newfilelocation.endswith(('.mp4', '.m4a')):  # MP4/M4A format
+                    from mutagen.mp4 import MP4, MP4Cover
+                    audio = MP4(newfilelocation)
+                    
+                    # Set text metadata
+                    audio['\xa9nam'] = info.get('title', '')
+                    audio['\xa9ART'] = info.get('artists', info.get('artist', ''))
+                    audio['\xa9alb'] = info.get('album', info.get('alt_title', ''))
+                    
+                    # Add album art
+                    if image_data := download_thumbnail(info):
+                        audio['covr'] = [MP4Cover(image_data, imageformat=MP4Cover.FORMAT_JPEG)]
+                    
+                    audio.save()
+        return newfilelocation
+    except Exception as e:
+        print(f"Error downloading file: {e}")
 
 
+def download_thumbnail(info):
+    """Download thumbnail image from YouTube metadata and return image bytes"""
+    if not info.get('thumbnail'):
+        return None
+    
+    try:
+        response = requests.get(info['thumbnail'])
+        response.raise_for_status()
+        
+        # Create images directory if not exists
+        os.makedirs('downloads/', exist_ok=True)
+        
+        # Sanitize filename
+        filename = slugify(info.get('title', 'thumbnail'), True) + '.jpg'
+        filepath = os.path.join('downloads/', filename)
+        
+        # Save the image
+        with open(filepath, 'wb') as f:
+            f.write(response.content)
+            return response.content
+            
+    except Exception as e:
+        print(f"Error downloading thumbnail: {e}")
 
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(link, download=False)
-        ydl.download([link])
-
-        if 'Music' in info['categories'] and TinyTag.is_supported(filelocation=True):
-            tag = TinyTag.get(filelocation, image=True)
-            tag.title = info.get('title', '')
-            tag.track = info.get('track', '')
-            tag.artist = info.get('artists', info.get('artist', ''))
-            tag.album = info.get('album', info.get('alt_title', ''))
-            tag.images = None
-
-
-    return filelocation
-
-def slugify(value, allow_unicode=False):
-    value = str(value)
-    if allow_unicode:
-        value = unicodedata.normalize('NFC', value)
-        # Allow Unicode letters/numbers and preserve case
-        value = re.sub(r'[^\w\s-]', '', value, flags=re.UNICODE)
-    else:
-        value = unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode('ascii')
-        value = re.sub(r'[^\w\s-]', '', value.lower())
-    return re.sub(r'[-\s]+', '-', value).strip('-_')
+from slugify import slugify
 
 def empty_folders(folder):
     for filename in os.listdir(folder):
