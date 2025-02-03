@@ -60,11 +60,12 @@ function CombineDownload(){
         body: JSON.stringify({
             videoURL: window.selectedFormats.video.url,
             audioURL: window.selectedFormats.audio.url,
+            original: window.selectedFormats.original,
             filename: window.selectedFormats['currentFormat'] // Sanitize filename
         })
     })
     .then(response => {
-        if (!response.ok) throw new Error('Combination failed');
+        if (!response.ok) throw new Error('Combination failed ' + response.message);
         return response.blob();
     })
     .then(blob => {
@@ -110,9 +111,9 @@ function ListingAllFormats(sortedFormats) {
         card.innerHTML = `
             <label class="select-format">
                 <input type="radio" name="${format.format.includes('audio') ? 'audioFormat' : 'videoFormat'}" 
-                       value="${format.url}" 
-                       data-format='${JSON.stringify(format).replace(/'/g, "\\'")}'
-                       ${window.selectedFormats?.[format.format.includes('audio') ? 'audio' : 'video']?.url === format.url ? 'checked' : ''}>
+                    value="${format.url}" 
+                    data-format='${JSON.stringify(format).replace(/'/g, "\\'")}'
+                    ${window.selectedFormats?.[format.format.includes('audio') ? 'audio' : 'video']?.url === format.url ? 'checked' : ''}>
                 Select for combined download
             </label>
             <p>Format: ${format.format}</p>

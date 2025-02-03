@@ -146,13 +146,13 @@ def Download_Combine():
         #        executor.submit(Download, url)
         # Download both formats concurrently
         import concurrent.futures
-        videoName = slugify('v_' + filename, allow_unicode=True)
-        audioName = slugify('a_' + filename, allow_unicode=True)
+        videoName = slugify('v_' + filename, True) + '#'
+        audioName = slugify('a_' + filename, True) + '#'
+        print(videoName)
         with concurrent.futures.ThreadPoolExecutor() as executor:
             video_future = executor.submit(Download, videoURL, original, videoName)
             audio_future = executor.submit(Download, audioURL, original, audioName)
             concurrent.futures.wait([video_future, audio_future])
-
         # Combine with ffmpeg
         fileOutputname = f"{filename}.mp4"
         output_path = 'downloads/' + slugify(fileOutputname, True) + '.mp4'
@@ -176,8 +176,8 @@ def Download_Combine():
         
         if result.returncode != 0:
             raise Exception(f"FFmpeg error: {result.stderr}")
-            
-        return send_file(output_path, as_attachment=True, download_name=fileOutputname)
+        if os.path.exists(output_path):
+            return send_file(output_path, as_attachment=True, download_name=fileOutputname)
     except:
         # message to be printed in the case of error
         return jsonify({"Msg": "Download error!"})
@@ -200,7 +200,6 @@ def Download(link, original, filelocation, ydl_opts=None):
                 'http_chunk_size': 1048576/2  # 1 MB chunks
             }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            download_info = ydl.extract_info(link, download=False)
             ydl.download([link])
 
             info = yt_dlp.YoutubeDL(ydl_opts).extract_info(original, download=False)
