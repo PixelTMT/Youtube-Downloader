@@ -129,7 +129,10 @@ function ListingAllFormats(sortedFormats) {
             <p>Extension: .${format.extension}</p>
             <p>Filesize: ${(format.filesize / 1024 / 1024).toFixed(2)} MB</p>
             <button class="download-btn" onclick="downloadFormat('${format.url}', '${window.selectedFormats['currentFormat']}.${format.extension}')">
-                Download
+                Download via Proxy
+            </button>
+            <button class="direct-download-btn" onclick="window.open('${format.url}')" style="margin-left: 8px; background-color: #2196F3;">
+                Direct Download
             </button>
         `;
         
