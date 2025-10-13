@@ -6,6 +6,9 @@ import unicodedata
 from mutagen.easyid3 import EasyID3
 import mutagen.id3
 import requests
+import threading
+import time
+import ffmpeg
 
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 sPort = 3000
@@ -155,27 +158,27 @@ def Download_Combine():
             concurrent.futures.wait([video_future, audio_future])
         # Combine with ffmpeg
         fileOutputname = f"{filename}.mp4"
-        output_path = 'downloads/' + slugify(fileOutputname, True) + '.mp4'
-        ffmpeg_path = 'ffmpeg/ffmpeg.exe'  # Path to ffmpeg executable
-        # Build ffmpeg command
-        command = [
-            ffmpeg_path,
-            '-i', f'downloads/{videoName}',
-            '-i', f'downloads/{audioName}',
-            '-c:v', 'copy',
-            '-c:a', 'aac',
-            '-map', '0:v:0',
-            '-map', '1:a:0',
-            '-y',  # Overwrite output file if exists
-            output_path
-        ]
+        output_path = 'downloads/' + fileOutputname + '.mp4'
         
-        # Run ffmpeg command
-        import subprocess
-        result = subprocess.run(command, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            raise Exception(f"FFmpeg error: {result.stderr}")
+        # Use ffmpeg-python library instead of subprocess
+
+        try:
+            (
+                ffmpeg
+                .input(f'downloads/{videoName}')
+                .input(f'downloads/{audioName}')
+                .output(
+                    output_path,
+                    vcodec='copy',
+                    acodec='aac',
+                    **{'map': ['0:v:0', '1:a:0']},  # Map video from first input and audio from second input
+                    y=None  # Overwrite output file if exists
+                )
+                .overwrite_output()
+                .run(quiet=False)
+            )
+        except ffmpeg.Error as e:
+            raise Exception(f"FFmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
         if os.path.exists(output_path):
             return send_file(output_path, as_attachment=True, download_name=fileOutputname)
     except:
@@ -187,6 +190,9 @@ def Download(link, original, filelocation, ydl_opts=None):
     _, _, ext = filelocation.partition('.')
     newfilelocation = 'downloads/' + slugify(filelocation, True) + '.' + ext
     try:
+        # Calculate thread count dynamically
+        cpu_count = os.cpu_count() or 1
+        threads = min(max(cpu_count, 1), 16)  # keep between 4–16
         if(not ydl_opts):
             ydl_opts = {
                 'outtmpl': newfilelocation,
@@ -195,10 +201,11 @@ def Download(link, original, filelocation, ydl_opts=None):
                 'format': 'best',
                 'progress_hooks': [lambda d: print(f'Download progress: {d["_percent_str"]}')],
                 'noprogress': False,
+                'concurrent_fragment_downloads': threads,
                 'external_downloader': 'aria2c',
-                'concurrent_fragment_downloads': 4*2,
-                'http_chunk_size': 1048576/2  # 1 MB chunks
+                'external_downloader_args': [f'-x{threads}', '-k1M']  # use same dynamic threads for aria2c
             }
+            print(threads)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([link])
 
@@ -238,7 +245,8 @@ def Download(link, original, filelocation, ydl_opts=None):
                         audio['covr'] = [MP4Cover(image_data, imageformat=MP4Cover.FORMAT_JPEG)]
                     
                     audio.save()
-        return newfilelocation
+            threading.Timer(300, os.remove, args=['downloads/' + filelocation]).start()
+            return newfilelocation
     except Exception as e:
         print(f"Error downloading file: {e}")
 
