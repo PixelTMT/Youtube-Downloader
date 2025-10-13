@@ -1,17 +1,17 @@
 from flask import Flask, request, Response, jsonify, send_file
 import yt_dlp
 import os, shutil
-import re
-import unicodedata
 from mutagen.easyid3 import EasyID3
 import mutagen.id3
 import requests
 import threading
-import time
 import ffmpeg
+from waitress import serve
+import subprocess
+import random
 
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
-sPort = 3000
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
 
 @app.route('/')
@@ -151,15 +151,19 @@ def Download_Combine():
         import concurrent.futures
         videoName = slugify('v_' + filename, True) + '#'
         audioName = slugify('a_' + filename, True) + '#'
-        print(videoName)
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
             video_future = executor.submit(Download, videoURL, original, videoName)
             audio_future = executor.submit(Download, audioURL, original, audioName)
             concurrent.futures.wait([video_future, audio_future])
+            videoName = video_future.result()
+            audioName = audio_future.result()
         # Combine with ffmpeg
         fileOutputname = f"{filename}.mp4"
-        output_path = 'downloads/' + fileOutputname + '.mp4'
-        
+        output_path = 'downloads/' + fileOutputname + str(random.randint(0, 9999999)) + '.mp4'
+        print(output_path)
+        print(videoName)
+        print(audioName)
         # Use ffmpeg-python library instead of subprocess
 
         try:
@@ -186,13 +190,21 @@ def Download_Combine():
         return jsonify({"Msg": "Download error!"})
     # combine video
 
+def has_aria2():
+    """Check if aria2c is installed."""
+    try:
+        subprocess.run(["aria2c", "-v"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except FileNotFoundError:
+        return False
+
 def Download(link, original, filelocation, ydl_opts=None):
     _, _, ext = filelocation.partition('.')
-    newfilelocation = 'downloads/' + slugify(filelocation, True) + '.' + ext
+    newfilelocation = 'downloads/' + slugify(filelocation, True) + str(random.randint(0, 9999999)) + '.' + ext
     try:
         # Calculate thread count dynamically
-        cpu_count = os.cpu_count() or 1
-        threads = min(max(cpu_count, 1), 16)  # keep between 4–16
+        aria2_available = has_aria2()
+        print(f"✅ aria2c installed: {aria2_available}")
         if(not ydl_opts):
             ydl_opts = {
                 'outtmpl': newfilelocation,
@@ -200,12 +212,11 @@ def Download(link, original, filelocation, ydl_opts=None):
                 'no_warnings': True,
                 'format': 'best',
                 'progress_hooks': [lambda d: print(f'Download progress: {d["_percent_str"]}')],
-                'noprogress': False,
-                'concurrent_fragment_downloads': threads,
+                'progress': False,
                 'external_downloader': 'aria2c',
-                'external_downloader_args': [f'-x{threads}', '-k1M']  # use same dynamic threads for aria2c
+                'external_downloader_args': ['-x16', '-s16', '-k1M'],  # use same dynamic threads for aria2c
+                'http_chunk_size': 524288
             }
-            print(threads)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([link])
 
@@ -288,6 +299,10 @@ def empty_folders(folder):
         except Exception as e:
             print('Failed to delete %s. Reason: %s' % (file_path, e))
 
+# Prepare API client
+
 if __name__ == '__main__':
     empty_folders('./downloads')
-    app.run(port=sPort, debug=True)
+    print("App has Started")
+    serve(app, host="0.0.0.0", port=14032)
+
