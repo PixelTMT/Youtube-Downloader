@@ -2,3 +2,6 @@ Flask==3.1.0
 Requests==2.32.3
 ffmpeg-python==0.2.0
 waitress==3.0.2
+yt-dlp
+mutagen
+python-slugify

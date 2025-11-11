@@ -68,32 +68,30 @@ def stream_combine():
     video_url = data.get('videoURL')
     audio_url = data.get('audioURL')
     filename = data.get('filename', 'output')
-    # optional metadata fields your page may send
-    title = data.get('title') or filename
-    artist = data.get('artist') or ''
-    comment = data.get('comment') or ''
 
     if not video_url or not audio_url:
-        return jsonify({"error":"videoURL and audioURL required"}), 400
+        return jsonify({"error": "videoURL and audioURL required"}), 400
 
-    # ffmpeg command: read remote inputs, copy streams, set metadata in container
-    ffmpeg_cmd = [
-        'ffmpeg',
-        '-hide_banner', '-loglevel', 'error',
-        '-i', video_url,
-        '-i', audio_url,
-        '-map', '0:v:0',   # use video stream from first input
-        '-map', '1:a:0',   # use audio stream from second input
-        '-c', 'copy',      # no re-encode
-        '-metadata', f'title={title}',
-        '-metadata', f'artist={artist}',
-        '-metadata', f'comment={comment}',
-        '-movflags', 'frag_keyframe+empty_moov+faststart',
-        '-f', 'mp4',
-        'pipe:1'
-    ]
+    try:
+        video_input = ffmpeg.input(video_url)
+        audio_input = ffmpeg.input(audio_url)
 
-    proc = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=10**6)
+        stream = ffmpeg.output(
+            video_input.video,
+            audio_input.audio,
+            'pipe:1',
+            c='copy',                                       # no re-encode
+            movflags='frag_keyframe+empty_moov+faststart',
+            f='mp4'
+        )
+        
+        # Add global arguments
+        stream = stream.global_args('-hide_banner', '-loglevel', 'error')
+
+        proc = stream.run_async(pipe_stdout=True, pipe_stderr=True)
+
+    except ffmpeg.Error as e:
+        return jsonify({"error": "ffmpeg execution failed", "details": e.stderr.decode() if e.stderr else 'No details'}), 500
 
     safe_name = slugify(filename, True) + '.mp4'
     headers = {'Content-Disposition': f'attachment; filename="{safe_name}"'}
