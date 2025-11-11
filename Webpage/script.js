@@ -42,52 +42,118 @@ async function fetchFormats() {
     }
 }
 
-function CombineDownload(){
+// streaming CombineDownload — replace the existing function
+async function CombineDownload(){
     if (!window.selectedFormats.video || !window.selectedFormats.audio) {
         alert('Please select both video and audio formats');
         return;
     }
-    
+
     const combineBtn = document.getElementById('combineBtn');
     combineBtn.disabled = true;
     SetLoading(true);
-    
-    fetch('/combine', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            videoURL: window.selectedFormats.video.url,
-            audioURL: window.selectedFormats.audio.url,
-            original: window.selectedFormats.original,
-            filename: window.selectedFormats['currentFormat'] // Sanitize filename
-        })
-    })
-    .then(response => {
-        if (!response.ok) throw new Error('Combination failed ' + response.message);
-        return response.blob();
-    })
-    .then(blob => {
+
+    // UI elements for progress (created in index.html)
+    const progressWrap = document.getElementById('downloadProgressWrap');
+    const progressBar = document.getElementById('downloadProgress');
+    const progressText = document.getElementById('downloadText');
+    const progressPercent = document.getElementById('downloadPercent');
+
+    progressWrap.style.display = 'block';
+    progressBar.style.width = '0%';
+    progressText.textContent = 'Starting...';
+    progressPercent.textContent = '0%';
+
+    // Prepare payload
+    const payload = {
+        videoURL: window.selectedFormats.video.url,
+        audioURL: window.selectedFormats.audio.url,
+        original: window.selectedFormats.original,
+        filename: window.selectedFormats['currentFormat']
+    };
+
+    // Abort controller so we can cancel if needed
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    try {
+        const resp = await fetch('/stream_combine', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+            signal
+        });
+
+        if (!resp.ok) {
+            throw new Error('Combine request failed: ' + resp.status);
+        }
+
+        // Try to read estimated size header (backend should set this if possible)
+        const estimated = resp.headers.get('X-Estimated-Content-Length');
+        const totalBytes = estimated ? parseInt(estimated, 10) : null;
+
+        // stream the body
+        const reader = resp.body.getReader();
+        const chunks = [];
+        let received = 0;
+        const startTime = Date.now();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+
+            // update progress UI
+            if (totalBytes) {
+                const pct = Math.min(100, (received / totalBytes) * 100);
+                progressBar.style.width = pct.toFixed(2) + '%';
+                progressPercent.textContent = pct.toFixed(1) + '%';
+                progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB of ${(totalBytes / (1024*1024)).toFixed(2)} MB`;
+            } else {
+                // unknown total: show bytes and speed
+                const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
+                const mbps = (received / (1024*1024)) / elapsed;
+                progressBar.style.width = '100%'; // keep bar full when unknown
+                progressPercent.textContent = `${(received / (1024*1024)).toFixed(2)} MB`;
+                progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB — ${mbps.toFixed(2)} MB/s`;
+            }
+        }
+
+        // assemble Blob and trigger download
+        const blob = new Blob(chunks, { type: 'video/mp4' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${window.selectedFormats['currentFormat']}.mp4`;
+        // sanitize filename a bit: remove slashes
+        const safeName = (window.selectedFormats['currentFormat'] || 'video').replace(/[\/\\:?<>|"]/g, '_');
+        a.download = `${safeName}.mp4`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
-    })
-    .catch(error => {
-        console.error('Error:', error);
-        alert('Failed to combine formats. Please try again.');
-    })
-    .finally(() => {
-        const combineBtn = document.getElementById('combineBtn');
+
+        progressText.textContent = 'Done!';
+        progressPercent.textContent = '100%';
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            progressText.textContent = 'Cancelled';
+        } else {
+            console.error(err);
+            alert('Failed to combine formats. See console for details.');
+            progressText.textContent = 'Error';
+        }
+    } finally {
         combineBtn.disabled = false;
         SetLoading(false);
-    });
+        // hide after a short delay so user sees completion
+        setTimeout(() => {
+            const progressWrap = document.getElementById('downloadProgressWrap');
+            if (progressWrap) progressWrap.style.display = 'none';
+        }, 2500);
+    }
 }
+
 
 function ListingAllFormats(sortedFormats) {
     const container = document.getElementById('formatsContainer');

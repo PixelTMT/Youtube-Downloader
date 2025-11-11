@@ -1,4 +1,6 @@
-from flask import Flask, request, Response, jsonify, send_file
+import select
+import time
+from flask import Flask, request, Response, jsonify, send_file, stream_with_context
 import yt_dlp
 import os, shutil
 from mutagen.easyid3 import EasyID3
@@ -8,8 +10,8 @@ import threading
 import ffmpeg
 from waitress import serve
 import subprocess
-import random
-
+import signal
+from slugify import slugify
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 
@@ -18,14 +20,85 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
 def index():
     return app.send_static_file('index.html')
 
-@app.route('/proxy', methods=['POST'])
-def proxy():
+def probe_content_length(url, timeout=5):
+    # Try HEAD first, fallback to GET with range zero if HEAD not supported
+    try:
+        r = requests.head(url, allow_redirects=True, timeout=timeout)
+        cl = r.headers.get('Content-Length')
+        if cl:
+            return int(cl)
+    except Exception:
+        pass
+    # fallback: try a ranged GET for first byte
+    try:
+        r = requests.get(url, headers={'Range': 'bytes=0-0'}, stream=True, timeout=timeout)
+        cl = r.headers.get('Content-Range')  # format: bytes 0-0/12345
+        if cl and '/' in cl:
+            total = cl.split('/', 1)[1]
+            return int(total)
+    except Exception:
+        pass
+    return None
+
+
+@stream_with_context
+def generate(proc):
+    try:
+        while True:
+            chunk = proc.stdout.read(64*1024)
+            if not chunk:
+                break
+            yield chunk
+    except GeneratorExit:
+        # client disconnected -> terminate ffmpeg
+        try:
+            proc.send_signal(signal.SIGTERM)
+        except Exception:
+            proc.kill()
+        raise
+    finally:
+        try: proc.stdout.close()
+        except: pass
+        try: proc.kill()
+        except: pass
+
+@app.route('/stream_combine', methods=['POST'])
+def stream_combine():
     data = request.json
-    url = data['url']
-    original = data['original']
-    filename = data['filename']
-    saveLocation = Download(link=url, original=original, filelocation=filename)
-    return send_file(saveLocation, as_attachment=True, download_name=filename)
+    video_url = data.get('videoURL')
+    audio_url = data.get('audioURL')
+    filename = data.get('filename', 'output')
+    # optional metadata fields your page may send
+    title = data.get('title') or filename
+    artist = data.get('artist') or ''
+    comment = data.get('comment') or ''
+
+    if not video_url or not audio_url:
+        return jsonify({"error":"videoURL and audioURL required"}), 400
+
+    # ffmpeg command: read remote inputs, copy streams, set metadata in container
+    ffmpeg_cmd = [
+        'ffmpeg',
+        '-hide_banner', '-loglevel', 'error',
+        '-i', video_url,
+        '-i', audio_url,
+        '-map', '0:v:0',   # use video stream from first input
+        '-map', '1:a:0',   # use audio stream from second input
+        '-c', 'copy',      # no re-encode
+        '-metadata', f'title={title}',
+        '-metadata', f'artist={artist}',
+        '-metadata', f'comment={comment}',
+        '-movflags', 'frag_keyframe+empty_moov+faststart',
+        '-f', 'mp4',
+        'pipe:1'
+    ]
+
+    proc = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=10**6)
+
+    safe_name = slugify(filename, True) + '.mp4'
+    headers = {'Content-Disposition': f'attachment; filename="{safe_name}"'}
+    return Response(generate(proc), mimetype='video/mp4', headers=headers)
+
 
 @app.route('/fullformats', methods=['POST'])
 def get_fullformats():
@@ -107,202 +180,9 @@ def get_format(link):
         'formats': formats
     })
 
-@app.route('/watch', methods=['GET'])
-def get_video():
-    link = request.args.get('v')
-
-    ydl_opts = {
-        'format': 'best[ext=mp4]',
-        'quiet': True,
-        'no_warnings': True,
-        'ignoreerrors': True,
-        'extractor_args': {'youtube': {'skip': ['dash', 'hls']}},
-        'outtmpl':
-        '%(title)s.%(ext)s',  # formatting the file name to be VideoName.mp4
-    }
-    try:
-        # attempt to download without errors
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(link, download=False)
-            filename = f"{info['title']}.{info['ext']}"
-            fileLocation = filename
-            saveLocation = Download(link, '', fileLocation, ydl_opts)
-            return send_file(saveLocation, as_attachment=True, download_name=filename)
-    except:
-        # message to be printed in the case of error
-        print("Download error!")
-
-@app.route('/combine', methods=['POST'])
-def Download_Combine():
-    # download and save both video and audio in downloads folder
-    data = request.json
-    videoURL = data['videoURL']
-    audioURL = data['audioURL']
-    original = data['original']
-    filename = data['filename']
-
-    try:
-        # attempt to download without errors
-        #urls = [videoURL, audioURL]
-        #with concurrent.futures.ThreadPoolExecutor() as executor:
-        #    for url in urls:
-        #        executor.submit(Download, url)
-        # Download both formats concurrently
-        import concurrent.futures
-        videoName = slugify('v_' + filename, True) + '#'
-        audioName = slugify('a_' + filename, True) + '#'
-
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            video_future = executor.submit(Download, videoURL, original, videoName)
-            audio_future = executor.submit(Download, audioURL, original, audioName)
-            concurrent.futures.wait([video_future, audio_future])
-            videoName = video_future.result()
-            audioName = audio_future.result()
-        # Combine with ffmpeg
-        fileOutputname = f"{filename}.mp4"
-        output_path = 'downloads/' + fileOutputname + str(random.randint(0, 9999999)) + '.mp4'
-        print(output_path)
-        print(videoName)
-        print(audioName)
-        # Use ffmpeg-python library instead of subprocess
-
-        try:
-            (
-                ffmpeg
-                .input(f'downloads/{videoName}')
-                .input(f'downloads/{audioName}')
-                .output(
-                    output_path,
-                    vcodec='copy',
-                    acodec='aac',
-                    **{'map': ['0:v:0', '1:a:0']},  # Map video from first input and audio from second input
-                    y=None  # Overwrite output file if exists
-                )
-                .overwrite_output()
-                .run(quiet=False)
-            )
-        except ffmpeg.Error as e:
-            raise Exception(f"FFmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
-        if os.path.exists(output_path):
-            return send_file(output_path, as_attachment=True, download_name=fileOutputname)
-    except:
-        # message to be printed in the case of error
-        return jsonify({"Msg": "Download error!"})
-    # combine video
-
-def has_aria2():
-    """Check if aria2c is installed."""
-    try:
-        subprocess.run(["aria2c", "-v"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return True
-    except FileNotFoundError:
-        return False
-
-def Download(link, original, filelocation, ydl_opts=None):
-    _, _, ext = filelocation.partition('.')
-    newfilelocation = 'downloads/' + slugify(filelocation, True) + str(random.randint(0, 9999999)) + '.' + ext
-    try:
-        # Calculate thread count dynamically
-        aria2_available = has_aria2()
-        print(f"✅ aria2c installed: {aria2_available}")
-        if(not ydl_opts):
-            ydl_opts = {
-                'outtmpl': newfilelocation,
-                'quiet': True,
-                'no_warnings': True,
-                'format': 'best',
-                'progress_hooks': [lambda d: print(f'Download progress: {d["_percent_str"]}')],
-                'progress': False,
-                'external_downloader': 'aria2c',
-                'external_downloader_args': ['-x16', '-s16', '-k1M'],  # use same dynamic threads for aria2c
-                'http_chunk_size': 524288
-            }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([link])
-
-            info = yt_dlp.YoutubeDL(ydl_opts).extract_info(original, download=False)
-            if 'Music' in info['categories'] and ext != 'webm':
-                # Only attempt metadata for supported formats
-                if newfilelocation.endswith('.mp3'):
-                    audio = EasyID3(newfilelocation)
-                    audio['title'] = info.get('title', '')
-                    audio['artist'] = info.get('artists', info.get('artist', ''))
-                    audio['album'] = info.get('album', info.get('alt_title', ''))
-                    audio.save()
-                    
-                    if image_data := download_thumbnail(info):
-                        audio = mutagen.id3.ID3(newfilelocation)
-                        audio.add(mutagen.id3.APIC(
-                            encoding=3,
-                            mime='image/jpeg',
-                            type=3,
-                            desc='Cover',
-                            data=image_data
-                        ))
-                        audio.save()
-                    else:  # Skip metadata for unsupported formats
-                        pass
-                elif newfilelocation.endswith(('.mp4', '.m4a')):  # MP4/M4A format
-                    from mutagen.mp4 import MP4, MP4Cover
-                    audio = MP4(newfilelocation)
-                    
-                    # Set text metadata
-                    audio['\xa9nam'] = info.get('title', '')
-                    audio['\xa9ART'] = info.get('artists', info.get('artist', ''))
-                    audio['\xa9alb'] = info.get('album', info.get('alt_title', ''))
-                    
-                    # Add album art
-                    if image_data := download_thumbnail(info):
-                        audio['covr'] = [MP4Cover(image_data, imageformat=MP4Cover.FORMAT_JPEG)]
-                    
-                    audio.save()
-            threading.Timer(300, os.remove, args=['downloads/' + filelocation]).start()
-            return newfilelocation
-    except Exception as e:
-        print(f"Error downloading file: {e}")
-
-
-def download_thumbnail(info):
-    """Download thumbnail image from YouTube metadata and return image bytes"""
-    if not info.get('thumbnail'):
-        return None
-    
-    try:
-        response = requests.get(info['thumbnail'])
-        response.raise_for_status()
-        
-        # Create images directory if not exists
-        os.makedirs('downloads/', exist_ok=True)
-        
-        # Sanitize filename
-        filename = slugify(info.get('title', 'thumbnail'), True) + '.jpg'
-        filepath = os.path.join('downloads/', filename)
-        
-        # Save the image
-        with open(filepath, 'wb') as f:
-            f.write(response.content)
-            return response.content
-            
-    except Exception as e:
-        print(f"Error downloading thumbnail: {e}")
-
-from slugify import slugify
-
-def empty_folders(folder):
-    for filename in os.listdir(folder):
-        file_path = os.path.join(folder, filename)
-        try:
-            if os.path.isfile(file_path) or os.path.islink(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
-        except Exception as e:
-            print('Failed to delete %s. Reason: %s' % (file_path, e))
-
 # Prepare API client
 
 if __name__ == '__main__':
-    empty_folders('./downloads')
-    print("App has Started")
-    serve(app, host="0.0.0.0", port=14032)
-
+    port = 14032
+    print(f"App has Started port {port}")
+    serve(app, host="0.0.0.0", port=port)

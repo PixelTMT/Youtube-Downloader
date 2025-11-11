@@ -140,3 +140,6 @@ button:disabled {
 .direct-download-btn:hover {
     background-color: #1976D2;
 }
+#downloadProgressWrap { width: 100%; max-width: 640px; }
+#downloadText { color: #333; }
+#downloadPercent { color: #333; font-weight: 600; }

@@ -15,6 +15,15 @@
             <button id="combineBtn" onclick="CombineDownload()" style="margin-left: 10px; background-color: #9E9E9E; color: white; padding: 8px 16px; border: none; border-radius: 4px;" disabled>Combine Selected Formats</button>
         </div>
         <div id="loadingBar" class="loading-bar" style="display: none;"></div>
+        <div id="downloadProgressWrap" style="display:none; margin-top:12px; max-width:600px;">
+            <div style="background:#eee; border-radius:6px; overflow:hidden; height:16px;">
+                <div id="downloadProgress" style="width:0%; height:100%; background:#ff0000; transition:width .15s;"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-top:6px; font-size:13px;">
+                <div id="downloadText">Waiting...</div>
+                <div id="downloadPercent">0%</div>
+            </div>
+        </div>
         <div id="videoInfo" style="display: none; margin: 20px 0; text-align: center;">
             <h2 id="videoTitle" style="margin-bottom: 10px;"></h2>
             <img id="videoThumbnail" style="max-width: 480px; border-radius: 8px; margin: 0 auto;">
