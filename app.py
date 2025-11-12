@@ -140,7 +140,6 @@ def stream_download():
     cl = resp.headers.get('Content-Length')
     if cl:
         headers['X-Estimated-Content-Length'] = cl
-        headers['Content-Length'] = cl  # optional: can let it be chunked
 
     return Response(generate_single(resp), mimetype=mimetype, headers=headers)
 
