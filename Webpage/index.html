@@ -20,9 +20,6 @@
                 <input type="text" id="urlInput" placeholder="Enter YouTube URL...">
                 <button id="searchBtn"><i class="fas fa-search"></i> Search</button>
             </div>
-            <div class="actions-area">
-                <button id="combineBtn" disabled><i class="fas fa-compress-arrows-alt"></i> Combine Selected Formats</button>
-            </div>
 
             <div id="loadingBar" class="loading-bar" style="display: none;"></div>
             
@@ -35,12 +32,13 @@
                     <div id="downloadPercent">0%</div>
                 </div>
             </div>
-
             <div id="videoInfo" style="display: none;">
                 <img id="videoThumbnail" alt="Video Thumbnail">
                 <h2 id="videoTitle"></h2>
             </div>
-
+            <div class="actions-area">
+                <button id="combineBtn" disabled><i class="fas fa-compress-arrows-alt"></i> Combine Selected Formats</button>
+            </div>
             <div id="formatsContainer"></div>
         </div>
     </main>

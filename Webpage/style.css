@@ -89,9 +89,11 @@ button {
 
 .actions-area {
     margin-bottom: 20px;
+    display: flex;
 }
 
 #combineBtn {
+    flex: 1;
     background-color: var(--green);
     color: white;
 }
