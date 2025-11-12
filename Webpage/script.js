@@ -195,10 +195,10 @@ function ListingAllFormats(sortedFormats) {
             <p>Extension: .${format.extension}</p>
             <p>Filesize: ${(format.filesize / 1024 / 1024).toFixed(2)} MB</p>
             <button class="download-btn" onclick="downloadFormat('${format.url}', '${window.selectedFormats['currentFormat']}.${format.extension}')">
-                Download via Proxy
+                Download
             </button>
             <button class="direct-download-btn" onclick="window.open('${format.url}')" style="margin-left: 8px; background-color: #2196F3;">
-                Direct Download
+                Raw File
             </button>
         `;
         
@@ -231,34 +231,117 @@ function UpdateCombineButton(){
     }
 }
 
-function downloadFormat(url, filename) {
+async function downloadFormat(url, filename) {
     document.querySelectorAll('.download-btn').forEach(btn => btn.disabled = true);
     SetLoading(true);
-    fetch('/proxy', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ url: url, original: window.selectedFormats['original'], filename: filename})
-    })
-    .then(response => {
-        if (!response.ok) throw new Error('Combination failed');
-        return response.blob();
-    })
-    .then(blob => {
-        const url = window.URL.createObjectURL(blob);
+
+    // UI elements for progress
+    const progressWrap = document.getElementById('downloadProgressWrap');
+    const progressBar = document.getElementById('downloadProgress');
+    const progressText = document.getElementById('downloadText');
+    const progressPercent = document.getElementById('downloadPercent');
+
+    progressWrap.style.display = 'block';
+    progressBar.style.width = '0%';
+    progressText.textContent = 'Starting...';
+    progressPercent.textContent = '0%';
+
+    // Prepare payload
+    const payload = {
+        url: url,
+        filename: filename
+    };
+
+    // Abort controller
+    const controller = new AbortController();
+    const signal = controller.signal;
+
+    try {
+        const resp = await fetch('/stream_download', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload),
+            signal
+        });
+
+        if (!resp.ok) {
+            throw new Error('Download request failed: ' + resp.status);
+        }
+
+        // Get total size from format data if possible
+        const formatData = window.sortedFormats.find(f => f.url === url);
+        const totalBytes = formatData ? formatData.filesize : null;
+
+        // stream the body
+        const reader = resp.body.getReader();
+        const chunks = [];
+        let received = 0;
+        const startTime = Date.now();
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+            received += value.length;
+
+            // update progress UI
+            if (totalBytes) {
+                const pct = Math.min(100, (received / totalBytes) * 100);
+                progressBar.style.width = pct.toFixed(2) + '%';
+                progressPercent.textContent = pct.toFixed(1) + '%';
+                progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB of ${(totalBytes / (1024*1024)).toFixed(2)} MB`;
+            } else {
+                // unknown total: show bytes and speed
+                const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
+                const mbps = (received / (1024*1024)) / elapsed;
+                progressBar.style.width = '100%'; // keep bar full when unknown
+                progressPercent.textContent = `${(received / (1024*1024)).toFixed(2)} MB`;
+                progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB — ${mbps.toFixed(2)} MB/s`;
+            }
+        }
+
+        // Get mimetype from filename extension
+        const extension = filename.split('.').pop();
+        const mimetypes = {
+            'mp4': 'video/mp4',
+            'webm': 'video/webm',
+            'mkv': 'video/x-matroska',
+            'mp3': 'audio/mpeg',
+            'm4a': 'audio/mp4',
+            'opus': 'audio/opus',
+        };
+        const mimetype = mimetypes[extension] || 'application/octet-stream';
+
+        // assemble Blob and trigger download
+        const blob = new Blob(chunks, { type: mimetype });
+        const blobUrl = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url;
+        a.href = blobUrl;
         a.download = filename;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-    })
-    .then(()=>{
-        SetLoading(false);
+        window.URL.revokeObjectURL(blobUrl);
+
+        progressText.textContent = 'Done!';
+        progressPercent.textContent = '100%';
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            progressText.textContent = 'Cancelled';
+        } else {
+            console.error(err);
+            alert('Failed to download format. See console for details.');
+            progressText.textContent = 'Error';
+        }
+    } finally {
         document.querySelectorAll('.download-btn').forEach(btn => btn.disabled = false);
-    });
+        SetLoading(false);
+        // hide after a short delay
+        setTimeout(() => {
+            const progressWrap = document.getElementById('downloadProgressWrap');
+            if (progressWrap) progressWrap.style.display = 'none';
+        }, 2500);
+    }
 }
 
 function SetLoading(state){

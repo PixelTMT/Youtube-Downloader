@@ -1,19 +1,23 @@
-import select
-import time
 from flask import Flask, request, Response, jsonify, send_file, stream_with_context
 import yt_dlp
-import os, shutil
-from mutagen.easyid3 import EasyID3
-import mutagen.id3
+import os
 import requests
-import threading
 import ffmpeg
 from waitress import serve
-import subprocess
 import signal
 from slugify import slugify
+
 app = Flask(__name__, static_folder='./Webpage', static_url_path='')
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", os.urandom(24))
+
+mimetypes = {
+    'mp4': 'video/mp4',
+    'webm': 'video/webm',
+    'mkv': 'video/x-matroska',
+    'mp3': 'audio/mpeg',
+    'm4a': 'audio/mp4',
+    'opus': 'audio/opus',
+}
 
 
 @app.route('/')
@@ -98,6 +102,48 @@ def stream_combine():
     return Response(generate(proc), mimetype='video/mp4', headers=headers)
 
 
+@stream_with_context
+def generate_single(resp):
+    try:
+        for chunk in resp.iter_content(chunk_size=64*1024):
+            if chunk:
+                yield chunk
+    finally:
+        try: resp.close()
+        except: pass
+
+@app.route('/stream_download', methods=['POST'])
+def stream_download():
+    data = request.json
+    url = data.get('url')
+    filename = data.get('filename')
+
+    if not url or not filename:
+        return jsonify({"error": "Invalid Request"}), 400
+
+    # extension and mime
+    _, _, ext = filename.rpartition('.')
+    ext = ext.lower()
+    safe_name = f"{slugify(filename.replace(f'.{ext}', ''), True)}.{ext}"
+    mimetype = mimetypes.get(ext, 'application/octet-stream')
+    headers = {'Content-Disposition': f'attachment; filename="{safe_name}"'}
+
+    try:
+        resp = requests.get(url, stream=True, timeout=15)
+    except Exception as e:
+        return jsonify({"error": "Failed to fetch source URL", "detail": str(e)}), 502
+
+    if resp.status_code != 200:
+        return jsonify({"error": "Source returned error", "status": resp.status_code}), 502
+
+    # forward the Content-Length if available for progress bars
+    cl = resp.headers.get('Content-Length')
+    if cl:
+        headers['X-Estimated-Content-Length'] = cl
+        headers['Content-Length'] = cl  # optional: can let it be chunked
+
+    return Response(generate_single(resp), mimetype=mimetype, headers=headers)
+
 @app.route('/fullformats', methods=['POST'])
 def get_fullformats():
     data = request.json
@@ -160,7 +206,7 @@ def get_format(link):
         info = ydl.extract_info(link, download=False)
         
         for f in info['formats']:
-            if(f.get('format_note') == 'storyboard'):
+            if(f.get('format_note') == 'storyboard' or f['ext'] == "webm"):
                 continue
             formats.append({
                     'codec': f.get('acodec', f.get('vcodec', f.get('acodec'))),
