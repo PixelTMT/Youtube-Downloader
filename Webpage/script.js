@@ -2,7 +2,7 @@ window.selectedFormats = {currentFormat: null, original: null , video: null, aud
 
 async function fetchFormats() {
     const url = document.getElementById('urlInput').value;
-    const button = document.querySelector('button');
+    const button = document.getElementById('searchBtn');
     
     window.selectedFormats = {currentFormat: null, original: document.getElementById('urlInput').value , video: null, audio: null };
     UpdateCombineButton();
@@ -162,11 +162,11 @@ function ListingAllFormats(sortedFormats) {
     // Create new containers each render
     const videoContainer = document.createElement('div');
     videoContainer.className = 'formats-section';
-    videoContainer.innerHTML = '<h3>Video Formats</h3>';
+    videoContainer.innerHTML = '<h3><i class="fas fa-video"></i> Video Formats</h3>';
     
     const audioContainer = document.createElement('div');
     audioContainer.className = 'formats-section';
-    audioContainer.innerHTML = '<h3>Audio Formats</h3>';
+    audioContainer.innerHTML = '<h3><i class="fas fa-music"></i> Audio Formats</h3>';
 
     sortedFormats.forEach(format => {
         
@@ -174,35 +174,48 @@ function ListingAllFormats(sortedFormats) {
         const card = document.createElement('div');
         card.className = 'format-card';
         
-        card.innerHTML = `
+        const isAudio = format.format.includes('audio');
+        const formatType = isAudio ? 'audio' : 'video';
+        const isSelected = window.selectedFormats?.[formatType]?.url === format.url;
+
+        let cardContent = `
             <label class="select-format">
-                <input type="radio" name="${format.format.includes('audio') ? 'audioFormat' : 'videoFormat'}" 
+                <input type="radio" name="${formatType}Format" 
                     value="${format.url}" 
                     data-format='${JSON.stringify(format).replace(/'/g, "\\'")}'
-                    ${window.selectedFormats?.[format.format.includes('audio') ? 'audio' : 'video']?.url === format.url ? 'checked' : ''}>
+                    ${isSelected ? 'checked' : ''}>
                 Select for combined download
             </label>
-            <p>Format: ${format.format}</p>
-            ${format.codec ? `<p>Codec: ${format.codec}</p>` : ''}
+            <p><strong>Format:</strong> ${format.format}</p>
+            ${format.codec ? `<p><strong>Codec:</strong> ${format.codec}</p>` : ''}
+        `;
+
+        if(isAudio){
+            cardContent += `
+                <p><strong>Bitrate:</strong> ${format.bitrate || 'N/A'} kbps</p>
+                <p><strong>Sample Rate:</strong> ${format.sampleRate ? (format.sampleRate / 1000) + ' kHz' : 'N/A'}</p>
             `;
-        if(format.format.includes('audio')){
-            card.innerHTML += `
-                <p>Bitrate: ${format.bitrate || 'N/A'} kbps</p>
-                <p>Sample Rate: .${format.sampleRate}</p>
-                `;
+        } else {
+            cardContent += `
+                <p><strong>Resolution:</strong> ${format.resolution || 'N/A'}</p>
+            `;
         }
-        card.innerHTML += `
-            <p>Extension: .${format.extension}</p>
-            <p>Filesize: ${(format.filesize / 1024 / 1024).toFixed(2)} MB</p>
-            <button class="download-btn" onclick="downloadFormat('${format.url}', '${window.selectedFormats['currentFormat']}.${format.extension}')">
-                Download
-            </button>
-            <button class="direct-download-btn" onclick="window.open('${format.url}')" style="margin-left: 8px; background-color: #2196F3;">
-                Raw File
-            </button>
+
+        cardContent += `
+            <p><strong>Extension:</strong> .${format.extension}</p>
+            <p><strong>Filesize:</strong> ${(format.filesize / 1024 / 1024).toFixed(2)} MB</p>
+            <div class="actions">
+                <button class="download-btn" onclick="downloadFormat('${format.url}', '${window.selectedFormats['currentFormat']}.${format.extension}')">
+                    <i class="fas fa-download"></i> Download
+                </button>
+                <button class="direct-download-btn" onclick="window.open('${format.url}')">
+                    <i class="fas fa-link"></i> Raw File
+                </button>
+            </div>
         `;
         
-            targetContainer.appendChild(card);
+        card.innerHTML = cardContent;
+        targetContainer.appendChild(card);
     });
 
     container.appendChild(videoContainer);
@@ -224,10 +237,8 @@ function UpdateCombineButton(){
     const combineBtn = document.getElementById('combineBtn');
     if (window.selectedFormats.video && window.selectedFormats.audio) {
         combineBtn.disabled = false;
-        combineBtn.style.backgroundColor = '#4CAF50';
     } else {
         combineBtn.disabled = true;
-        combineBtn.style.backgroundColor = '#9E9E9E';
     }
 }
 
@@ -354,12 +365,15 @@ function SetLoading(state){
     }
 }
 
-// Auto-trigger when page loads with URL parameter
+// Auto-trigger when page loads with URL parameter and add event listeners
 document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('searchBtn').addEventListener('click', fetchFormats);
+    document.getElementById('combineBtn').addEventListener('click', CombineDownload);
+
     const urlParams = new URLSearchParams(window.location.search);
     const vID = urlParams.get('v');
     if (vID) {
-        document.getElementById('urlInput').value = vID;
+        document.getElementById('urlInput').value = 'https://www.youtube.com/watch?v=' + vID;
         fetchFormats();
     }
 });
