@@ -230,6 +230,13 @@ button {
     color: white;
 }
 
+.download-btn:disabled, .combineBtn:disabled {
+    background-color: #555;
+    color: #999;
+    cursor: not-allowed;
+}
+
+
 .direct-download-btn {
     background-color: var(--blue);
     color: white;

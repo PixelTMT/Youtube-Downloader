@@ -1,4 +1,5 @@
 window.selectedFormats = {currentFormat: null, original: null , video: null, audio: null };
+window.isDownloading = false;
 
 async function fetchFormats() {
     const url = document.getElementById('urlInput').value;
@@ -49,8 +50,7 @@ async function CombineDownload(){
         return;
     }
 
-    const combineBtn = document.getElementById('combineBtn');
-    combineBtn.disabled = true;
+    setDownloadButtonsState(true);
     SetLoading(true);
 
     // UI elements for progress (created in index.html)
@@ -103,17 +103,16 @@ async function CombineDownload(){
             if (done) break;
             chunks.push(value);
             received += value.length;
-
+            const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
+            const mbps = (received / (1024*1024)) / elapsed;
             // update progress UI
             if (totalBytes) {
                 const pct = Math.min(100, (received / totalBytes) * 100);
                 progressBar.style.width = pct.toFixed(2) + '%';
                 progressPercent.textContent = pct.toFixed(1) + '%';
-                progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB of ${(totalBytes / (1024*1024)).toFixed(2)} MB`;
+                progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB of ${(totalBytes / (1024*1024)).toFixed(2)} MB — ${mbps.toFixed(2)} MB/s`;
             } else {
                 // unknown total: show bytes and speed
-                const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
-                const mbps = (received / (1024*1024)) / elapsed;
                 progressBar.style.width = '100%'; // keep bar full when unknown
                 progressPercent.textContent = `${(received / (1024*1024)).toFixed(2)} MB`;
                 progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB — ${mbps.toFixed(2)} MB/s`;
@@ -144,7 +143,7 @@ async function CombineDownload(){
             progressText.textContent = 'Error';
         }
     } finally {
-        combineBtn.disabled = false;
+        setDownloadButtonsState(false);
         SetLoading(false);
         // hide after a short delay so user sees completion
         setTimeout(() => {
@@ -220,6 +219,7 @@ function ListingAllFormats(sortedFormats) {
 
     container.appendChild(videoContainer);
     container.appendChild(audioContainer);
+    UpdateCombineButton();
 }
 
 // Handle format selection changes
@@ -243,7 +243,7 @@ function UpdateCombineButton(){
 }
 
 async function downloadFormat(url, filename) {
-    document.querySelectorAll('.download-btn').forEach(btn => btn.disabled = true);
+    setDownloadButtonsState(true);
     SetLoading(true);
 
     // UI elements for progress
@@ -294,17 +294,16 @@ async function downloadFormat(url, filename) {
             if (done) break;
             chunks.push(value);
             received += value.length;
-
+            const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
+            const mbps = (received / (1024*1024)) / elapsed;
             // update progress UI
             if (totalBytes) {
                 const pct = Math.min(100, (received / totalBytes) * 100);
                 progressBar.style.width = pct.toFixed(2) + '%';
                 progressPercent.textContent = pct.toFixed(1) + '%';
-                progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB of ${(totalBytes / (1024*1024)).toFixed(2)} MB`;
+                progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB of ${(totalBytes / (1024*1024)).toFixed(2)} MB — ${mbps.toFixed(2)} MB/s`;
             } else {
                 // unknown total: show bytes and speed
-                const elapsed = Math.max(1, (Date.now() - startTime) / 1000);
-                const mbps = (received / (1024*1024)) / elapsed;
                 progressBar.style.width = '100%'; // keep bar full when unknown
                 progressPercent.textContent = `${(received / (1024*1024)).toFixed(2)} MB`;
                 progressText.textContent = `Downloaded ${(received / (1024*1024)).toFixed(2)} MB — ${mbps.toFixed(2)} MB/s`;
@@ -345,13 +344,21 @@ async function downloadFormat(url, filename) {
             progressText.textContent = 'Error';
         }
     } finally {
-        document.querySelectorAll('.download-btn').forEach(btn => btn.disabled = false);
+        setDownloadButtonsState(false);
         SetLoading(false);
         // hide after a short delay
         setTimeout(() => {
             const progressWrap = document.getElementById('downloadProgressWrap');
             if (progressWrap) progressWrap.style.display = 'none';
         }, 2500);
+    }
+}
+
+function setDownloadButtonsState(disabled) {
+    document.querySelectorAll('.download-btn').forEach(btn => btn.disabled = disabled);
+    const combineBtn = document.getElementById('combineBtn');
+    if (combineBtn) {
+        combineBtn.disabled = disabled;
     }
 }
 
