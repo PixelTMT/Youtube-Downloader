@@ -245,6 +245,7 @@ function UpdateCombineButton(){
 async function downloadFormat(url, filename) {
     setDownloadButtonsState(true);
     SetLoading(true);
+    window.isDownloading = true;
 
     // UI elements for progress
     const progressWrap = document.getElementById('downloadProgressWrap');
@@ -344,6 +345,7 @@ async function downloadFormat(url, filename) {
             progressText.textContent = 'Error';
         }
     } finally {
+        window.isDownloading = false;
         setDownloadButtonsState(false);
         SetLoading(false);
         // hide after a short delay
@@ -383,4 +385,11 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('urlInput').value = 'https://www.youtube.com/watch?v=' + vID;
         fetchFormats();
     }
+
+    window.addEventListener('beforeunload', (event) => {
+        if (window.isDownloading) {
+            event.preventDefault();
+            event.returnValue = ''; // Required for Chrome
+        }
+    });
 });
