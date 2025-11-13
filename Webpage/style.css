@@ -267,3 +267,23 @@ button {
         flex-direction: column;
     }
 }
+#cancelBtn {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9em;
+    margin-top: 10px;
+    display: inline-block;
+    transition: background-color 0.3s;
+}
+
+#cancelBtn:hover {
+    background-color: #c82333;
+}
+
+#cancelBtn i {
+    margin-right: 5px;
+}

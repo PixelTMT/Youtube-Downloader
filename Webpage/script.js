@@ -1,18 +1,20 @@
 window.selectedFormats = {currentFormat: null, original: null , video: null, audio: null };
 window.isDownloading = false;
+window.combineDownloadBtnState = false;
+window.abortController = new AbortController();
 
-async function fetchFormats() {
+async function fetchVideoInfo() {
     const url = document.getElementById('urlInput').value;
     const button = document.getElementById('searchBtn');
     
     window.selectedFormats = {currentFormat: null, original: document.getElementById('urlInput').value , video: null, audio: null };
-    UpdateCombineButton();
+    updateCombineButton();
 
     try {
         button.disabled = true;
-        SetLoading(true);
+        setLoading(true);
         
-        const response = await fetch('/formats', {
+        const response = await fetch('/api/info', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -33,36 +35,38 @@ async function fetchFormats() {
         // Sort formats by filesize descending
         const sortedFormats = formats.sort((a, b) => b.filesize - a.filesize);
         window.sortedFormats = sortedFormats;
-        ListingAllFormats(sortedFormats);
+        renderFormats(sortedFormats);
     } catch (error) {
         console.error('Error:', error);
         alert('Failed to fetch formats. Please check the URL and try again.');
     } finally {
         button.disabled = false;
-        SetLoading(false);
+        setLoading(false);
     }
 }
 
 // streaming CombineDownload — replace the existing function
-async function CombineDownload(){
+async function startCombinedDownload(){
     if (!window.selectedFormats.video || !window.selectedFormats.audio) {
         alert('Please select both video and audio formats');
         return;
     }
 
     setDownloadButtonsState(true);
-    SetLoading(true);
+    setLoading(true);
 
     // UI elements for progress (created in index.html)
     const progressWrap = document.getElementById('downloadProgressWrap');
     const progressBar = document.getElementById('downloadProgress');
     const progressText = document.getElementById('downloadText');
     const progressPercent = document.getElementById('downloadPercent');
+    const cancelBtn = document.getElementById('cancelBtn');
 
     progressWrap.style.display = 'block';
     progressBar.style.width = '0%';
     progressText.textContent = 'Starting...';
     progressPercent.textContent = '0%';
+    cancelBtn.style.display = 'inline-block';
 
     // Prepare payload
     const payload = {
@@ -73,8 +77,8 @@ async function CombineDownload(){
     };
 
     // Abort controller so we can cancel if needed
-    const controller = new AbortController();
-    const signal = controller.signal;
+    window.abortController = new AbortController();
+    const signal = window.abortController.signal;
 
     try {
         const resp = await fetch('/stream_combine', {
@@ -143,8 +147,10 @@ async function CombineDownload(){
             progressText.textContent = 'Error';
         }
     } finally {
+        updateCombineButton();
         setDownloadButtonsState(false);
-        SetLoading(false);
+        setLoading(false);
+        document.getElementById('cancelBtn').style.display = 'none';
         // hide after a short delay so user sees completion
         setTimeout(() => {
             const progressWrap = document.getElementById('downloadProgressWrap');
@@ -154,7 +160,7 @@ async function CombineDownload(){
 }
 
 
-function ListingAllFormats(sortedFormats) {
+function renderFormats(sortedFormats) {
     const container = document.getElementById('formatsContainer');
     container.innerHTML = '';
 
@@ -219,7 +225,7 @@ function ListingAllFormats(sortedFormats) {
 
     container.appendChild(videoContainer);
     container.appendChild(audioContainer);
-    UpdateCombineButton();
+    updateCombineButton();
 }
 
 // Handle format selection changes
@@ -228,23 +234,27 @@ document.addEventListener('change', (e) => {
         const formatType = e.target.name === 'videoFormat' ? 'video' : 'audio';
         const formatData = JSON.parse(e.target.dataset.format.replace(/\\'/g, "'"));
         window.selectedFormats[formatType] = formatData;
-        UpdateCombineButton();
+        updateCombineButton();
     }
 });
 
-function UpdateCombineButton(){
+function updateCombineButton(){
     // Update combine button state
     const combineBtn = document.getElementById('combineBtn');
     if (window.selectedFormats.video && window.selectedFormats.audio) {
-        combineBtn.disabled = false;
+        window.combineDownloadBtnState = false;
     } else {
-        combineBtn.disabled = true;
+        window.combineDownloadBtnState = true;
+    }
+
+    if(!window.isDownloading){
+        combineBtn.disabled = window.combineDownloadBtnState;
     }
 }
 
 async function downloadFormat(url, filename) {
     setDownloadButtonsState(true);
-    SetLoading(true);
+    setLoading(true);
     window.isDownloading = true;
 
     // UI elements for progress
@@ -252,11 +262,13 @@ async function downloadFormat(url, filename) {
     const progressBar = document.getElementById('downloadProgress');
     const progressText = document.getElementById('downloadText');
     const progressPercent = document.getElementById('downloadPercent');
+    const cancelBtn = document.getElementById('cancelBtn');
 
     progressWrap.style.display = 'block';
     progressBar.style.width = '0%';
     progressText.textContent = 'Starting...';
     progressPercent.textContent = '0%';
+    cancelBtn.style.display = 'inline-block';
 
     // Prepare payload
     const payload = {
@@ -265,8 +277,8 @@ async function downloadFormat(url, filename) {
     };
 
     // Abort controller
-    const controller = new AbortController();
-    const signal = controller.signal;
+    window.abortController = new AbortController();
+    const signal = window.abortController.signal;
 
     try {
         const resp = await fetch('/stream_download', {
@@ -346,8 +358,10 @@ async function downloadFormat(url, filename) {
         }
     } finally {
         window.isDownloading = false;
+        updateCombineButton();
         setDownloadButtonsState(false);
-        SetLoading(false);
+        setLoading(false);
+        document.getElementById('cancelBtn').style.display = 'none';
         // hide after a short delay
         setTimeout(() => {
             const progressWrap = document.getElementById('downloadProgressWrap');
@@ -364,7 +378,7 @@ function setDownloadButtonsState(disabled) {
     }
 }
 
-function SetLoading(state){
+function setLoading(state){
     const loadingBar = document.getElementById('loadingBar');
     if(state){
         loadingBar.style.display = 'block';
@@ -374,16 +388,23 @@ function SetLoading(state){
     }
 }
 
+function cancelDownload() {
+    if (window.abortController) {
+        window.abortController.abort();
+    }
+}
+
 // Auto-trigger when page loads with URL parameter and add event listeners
 document.addEventListener('DOMContentLoaded', () => {
-    document.getElementById('searchBtn').addEventListener('click', fetchFormats);
-    document.getElementById('combineBtn').addEventListener('click', CombineDownload);
+    document.getElementById('searchBtn').addEventListener('click', fetchVideoInfo);
+    document.getElementById('combineBtn').addEventListener('click', startCombinedDownload);
+    document.getElementById('cancelBtn').addEventListener('click', cancelDownload);
 
     const urlParams = new URLSearchParams(window.location.search);
     const vID = urlParams.get('v');
     if (vID) {
         document.getElementById('urlInput').value = 'https://www.youtube.com/watch?v=' + vID;
-        fetchFormats();
+        fetchVideoInfo();
     }
 
     window.addEventListener('beforeunload', (event) => {
