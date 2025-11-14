@@ -14,7 +14,7 @@ async function fetchVideoInfo() {
         button.disabled = true;
         setLoading(true);
         
-        const response = await fetch('/api/info', {
+        const response = await fetch('/api/video_details', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -51,7 +51,8 @@ async function startCombinedDownload(){
         alert('Please select both video and audio formats');
         return;
     }
-
+    window.isDownloading = true;
+    updateCombineButton();
     setDownloadButtonsState(true);
     setLoading(true);
 
@@ -147,6 +148,7 @@ async function startCombinedDownload(){
             progressText.textContent = 'Error';
         }
     } finally {
+        window.isDownloading = false;
         updateCombineButton();
         setDownloadButtonsState(false);
         setLoading(false);
@@ -241,22 +243,14 @@ document.addEventListener('change', (e) => {
 function updateCombineButton(){
     // Update combine button state
     const combineBtn = document.getElementById('combineBtn');
-    if (window.selectedFormats.video && window.selectedFormats.audio) {
-        window.combineDownloadBtnState = false;
-    } else {
-        window.combineDownloadBtnState = true;
-    }
-
-    if(!window.isDownloading){
-        combineBtn.disabled = window.combineDownloadBtnState;
-    }
+    combineBtn.disabled = (!(window.selectedFormats.video && window.selectedFormats.audio) && !window.isDownloading);
 }
 
 async function downloadFormat(url, filename) {
     setDownloadButtonsState(true);
     setLoading(true);
     window.isDownloading = true;
-
+    updateCombineButton();
     // UI elements for progress
     const progressWrap = document.getElementById('downloadProgressWrap');
     const progressBar = document.getElementById('downloadProgress');
@@ -372,10 +366,6 @@ async function downloadFormat(url, filename) {
 
 function setDownloadButtonsState(disabled) {
     document.querySelectorAll('.download-btn').forEach(btn => btn.disabled = disabled);
-    const combineBtn = document.getElementById('combineBtn');
-    if (combineBtn) {
-        combineBtn.disabled = disabled;
-    }
 }
 
 function setLoading(state){

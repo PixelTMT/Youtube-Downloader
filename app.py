@@ -143,55 +143,17 @@ def stream_download():
 
     return Response(generate_single(resp), mimetype=mimetype, headers=headers)
 
-@app.route('/fullformats', methods=['POST'])
-def get_fullformats():
+
+
+@app.route('/api/video_details', methods=['POST'])
+def get_video_details():
     data = request.json
     link = data['url']
-    
-    ydl_opts = {
-        'format': 'best',
-        'quiet': True,
-        'no_warnings': True,
-        'ignoreerrors': True,
-        'extractor_args': {'youtube': {'skip': ['dash', 'hls']}}
-    }
-    
-    formats = []
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(link, download=False)
-        for f in info['formats']:
-            formats.append(f)
-    
-    return jsonify(formats)
+    return extract_and_filter_formats(link)
 
-@app.route('/info', methods=['POST'])
-def get_info():
-    data = request.json
-    link = data['url']
-    
-    ydl_opts = {
-        'format': 'best',
-        'quiet': True,
-        'no_warnings': True,
-        'ignoreerrors': True,
-        'extractor_args': {'youtube': {'skip': ['dash', 'hls']}}
-    }
-    
-    formats = []
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(link, download=False)
-        formats.append(info)
-            
-    
-    return jsonify(formats)
 
-@app.route('/formats', methods=['POST'])
-def get_formats():
-    data = request.json
-    link = data['url']
-    return get_format(link)
 
-def get_format(link):
+def extract_and_filter_formats(link):
     ydl_opts = {
         'format': 'best',
         'quiet': True,
@@ -225,7 +187,12 @@ def get_format(link):
 
 # Prepare API client
 
+DEBUG = True # Set to False for production deployment
+
 if __name__ == '__main__':
     port = 14032
     print(f"App has Started port {port}")
-    serve(app, host="0.0.0.0", port=port)
+    if DEBUG:
+        app.run(debug=True, host="0.0.0.0", port=port)
+    else:
+        serve(app, host="0.0.0.0", port=port)
