@@ -1,4 +1,4 @@
-from flask import Flask, request, Response, jsonify, send_file, stream_with_context
+from flask import Flask, request, Response, jsonify, stream_with_context
 import yt_dlp
 import os
 import requests
@@ -19,31 +19,9 @@ mimetypes = {
     'opus': 'audio/opus',
 }
 
-
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
-
-def probe_content_length(url, timeout=5):
-    # Try HEAD first, fallback to GET with range zero if HEAD not supported
-    try:
-        r = requests.head(url, allow_redirects=True, timeout=timeout)
-        cl = r.headers.get('Content-Length')
-        if cl:
-            return int(cl)
-    except Exception:
-        pass
-    # fallback: try a ranged GET for first byte
-    try:
-        r = requests.get(url, headers={'Range': 'bytes=0-0'}, stream=True, timeout=timeout)
-        cl = r.headers.get('Content-Range')  # format: bytes 0-0/12345
-        if cl and '/' in cl:
-            total = cl.split('/', 1)[1]
-            return int(total)
-    except Exception:
-        pass
-    return None
-
 
 @stream_with_context
 def generate(proc):
@@ -143,15 +121,11 @@ def stream_download():
 
     return Response(generate_single(resp), mimetype=mimetype, headers=headers)
 
-
-
 @app.route('/api/video_details', methods=['POST'])
 def get_video_details():
     data = request.json
     link = data['url']
     return extract_and_filter_formats(link)
-
-
 
 def extract_and_filter_formats(link):
     ydl_opts = {
