@@ -78,9 +78,10 @@ def test_and_download_stream(format_info, base_url, stream_type, results):
         "api_file": api_filename
     }
 
-def run_test():
+def run_test(quality='lowest'):
     """
     Tests the Flask application by starting the server, making API calls, and then shutting it down.
+    :param quality: The quality of the streams to test ('lowest' or 'highest').
     """
     server_process = None
     try:
@@ -100,11 +101,32 @@ def run_test():
         print(f"Title: {data['title']}")
         print("/api/video_details test PASSED")
 
-        video_format = next((f for f in data["formats"] if f.get("extension") == "mp4" and not f.get("sampleRate")), None)
-        audio_format = next((f for f in data["formats"] if f.get("codec") and "mp4a" in f["codec"] ), None)
+        print(f"Selecting {quality} quality formats...")
+        if quality == 'highest':
+            video_formats = [f for f in data["formats"] if f.get("extension") == "mp4" and not f.get("sampleRate") and f.get('filesize')]
+            if video_formats:
+                video_formats.sort(key=lambda f: f['filesize'])
+                video_format = video_formats[-1]
+            else:
+                video_format = None
+
+            audio_formats = [f for f in data["formats"] if f.get("codec") and "mp4a" in f["codec"] and f.get('filesize')]
+            if audio_formats:
+                audio_formats.sort(key=lambda f: f['filesize'])
+                audio_format = audio_formats[-1]
+            else:
+                audio_format = None
+        else: # 'lowest'
+            video_format = next((f for f in data["formats"] if f.get("extension") == "mp4" and not f.get("sampleRate")), None)
+            audio_format = next((f for f in data["formats"] if f.get("codec") and "mp4a" in f["codec"] ), None)
 
         print(f"video_format is not None: {video_format is not None}")
+        if video_format:
+            print(f"Selected video format: {video_format.get('format')}")
         print(f"audio_format is not None: {audio_format is not None}")
+        if audio_format:
+            print(f"Selected audio format: {audio_format.get('format')}")
+
 
         results = {}
         threads = []
@@ -168,7 +190,7 @@ def run_test():
                 hash_test_passed = local_hash == api_hash
 
             if combine_response.status_code == 200 and size_test_passed and hash_test_passed:
-                print("/stream_combine test Pass")
+                print(f"/stream_combine test Pass (Size match: {size_test_passed}, Hash match: {hash_test_passed})")
             else:
                 print(f"/stream_combine test Failed (Size match: {size_test_passed}, Hash match: {hash_test_passed})")
 
@@ -195,4 +217,10 @@ def run_test():
             print("Server shut down.")
 
 if __name__ == "__main__":
-    run_test()
+    import argparse
+    parser = argparse.ArgumentParser(description="Run the application test suite.")
+    parser.add_argument('--quality', type=str, default='lowest', choices=['lowest', 'highest'],
+                        help='The quality of the video/audio to test (default: lowest).')
+    args = parser.parse_args()
+    
+    run_test(quality=args.quality)
