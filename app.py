@@ -76,7 +76,7 @@ def stream_combine():
         return jsonify({"error": "ffmpeg execution failed", "details": e.stderr.decode() if e.stderr else 'No details'}), 500
 
     safe_name = slugify(filename, True) + '.mp4'
-    headers = {'Content-Disposition': f'attachment; filename="{safe_name}"'}
+    headers = {'Content-Disposition': f'attachment; filename="{filename + '.mp4'}"'}
     return Response(generate(proc), mimetype='video/mp4', headers=headers)
 
 
@@ -104,7 +104,7 @@ def stream_download():
     ext = ext.lower()
     safe_name = f"{slugify(filename.replace(f'.{ext}', ''), True)}.{ext}"
     mimetype = mimetypes.get(ext, 'application/octet-stream')
-    headers = {'Content-Disposition': f'attachment; filename="{safe_name}"'}
+    headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
 
     try:
         resp = requests.get(url, stream=True, timeout=15)
