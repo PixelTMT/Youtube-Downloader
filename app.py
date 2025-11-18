@@ -234,7 +234,7 @@ def extract_and_filter_formats(link):
 
 # Prepare API client
 
-DEBUG = True # Set to False for production deployment
+DEBUG = False # Set to False for production deployment
 
 if __name__ == '__main__':
     port = 14032
