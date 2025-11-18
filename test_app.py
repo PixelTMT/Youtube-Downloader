@@ -1,11 +1,11 @@
 
 import subprocess
-import time
 import requests
 import os
-import signal
 import threading
 import hashlib
+import json
+from app import app
 
 def file_hash(filename):
     h = hashlib.sha256()
@@ -14,7 +14,7 @@ def file_hash(filename):
             h.update(chunk)
     return h.hexdigest()
 
-def _download_and_compare_stream(format_info, base_url, stream_type, results, thumbnail_url=None):
+def test_and_download_stream(client, format_info, stream_type, results):
     """
     Tests the /stream_download endpoint for a given stream type (video or audio).
     Downloads the file from the API and verifies its properties.
@@ -24,34 +24,48 @@ def _download_and_compare_stream(format_info, base_url, stream_type, results, th
     api_filename = f"test_{stream_type}_api.{format_info['extension']}"
     is_video_only = stream_type == "video" and not format_info.get("sampleRate")
 
-    payload = {
-        "url": format_info["url"],
-        "filename": api_filename,
-        "thumbnailURL": thumbnail_url if stream_type == "audio" else None,
-        "videoOnly": is_video_only
-    }
+    def download_raw():
+        print(f"Downloading {stream_type} from raw URL...")
+        raw_response = requests.get(format_info["url"], stream=True)
+        with open(raw_filename, "wb") as f:
+            for chunk in raw_response.iter_content(chunk_size=1024):
+                if chunk:
+                    f.write(chunk)
+        print(f"Raw {stream_type} download complete.")
 
-    print(f"Downloading {stream_type} from API with payload: {payload}")
-    api_response = requests.post(f"{base_url}/stream_download", json=payload, stream=True)
-    with open(api_filename, "wb") as f:
-        for chunk in api_response.iter_content(chunk_size=1024):
-            if chunk:
-                f.write(chunk)
-    print(f"API {stream_type} download complete.")
+    def download_api():
+        print(f"Downloading {stream_type} from API...")
+        api_response = client.post("/stream_download", json={"url": format_info["url"], "filename": api_filename})
+        with open(api_filename, "wb") as f:
+            f.write(api_response.data)
+        print(f"API {stream_type} download complete.")
+        return api_response
 
-    verification_passed = False
-    if api_response.status_code == 200:
-        if stream_type == "audio" and thumbnail_url:
-            verification_passed = _verify_thumbnail_embedded(api_filename)
-            print(f"Thumbnail verification for {api_filename}: {'Pass' if verification_passed else 'Fail'}")
-        elif is_video_only:
-            verification_passed = _verify_silent_audio(api_filename)
-            print(f"Silent audio verification for {api_filename}: {'Pass' if verification_passed else 'Fail'}")
-        else:
-            # For audio without thumbnail or video with audio, we can just check if the file is valid
-            verification_passed = os.path.getsize(api_filename) > 0
+    raw_thread = threading.Thread(target=download_raw)
+    api_thread_result = {}
+    api_thread = threading.Thread(target=lambda: api_thread_result.update(api_response=download_api()))
 
-    if verification_passed:
+    raw_thread.start()
+    api_thread.start()
+    raw_thread.join()
+    api_thread.join()
+
+    api_response = api_thread_result.get("api_response")
+
+    raw_size = os.path.getsize(raw_filename)
+    api_size = os.path.getsize(api_filename)
+    print(f"Raw {stream_type} size: {raw_size}, API {stream_type} size: {api_size}")
+
+    size_test_passed = raw_size == api_size
+    hash_test_passed = False
+    if size_test_passed:
+        raw_hash = file_hash(raw_filename)
+        api_hash = file_hash(api_filename)
+        print(f"Raw {stream_type} hash: {raw_hash}")
+        print(f"API {stream_type} hash: {api_hash}")
+        hash_test_passed = raw_hash == api_hash
+
+    if api_response and api_response.status_code == 200 and size_test_passed and hash_test_passed:
         testPass = "Pass"
 
     print(f"/stream_download {stream_type} test {testPass}")
@@ -85,24 +99,18 @@ def _verify_silent_audio(filepath):
 
 def test_app_flow(quality='lowest'):
     """
-    Tests the Flask application by starting the server, making API calls, and then shutting it down.
+    Tests the Flask application by making API calls with a test client.
     :param quality: The quality of the streams to test ('lowest' or 'highest').
     """
-    server_process = None
+    client = app.test_client()
     try:
-        # Start the server
-        server_process = subprocess.Popen(['python3', 'app.py'])
-        print("Server started, waiting for it to be ready...")
-        time.sleep(5)
-
-        base_url = "http://127.0.0.1:14032"
         youtube_url = "https://www.youtube.com/watch?v=g0JEUPfmu9c"
 
         # Test /api/video_details
         print("Testing /api/video_details...")
-        response = requests.post(f"{base_url}/api/video_details", json={"url": youtube_url})
+        response = client.post("/api/video_details", json={"url": youtube_url})
         print(f"response.status_code: {response.status_code}")
-        data = response.json()
+        data = json.loads(response.data)
         print(f"Title: {data['title']}")
         print("/api/video_details test PASSED")
 
@@ -137,12 +145,12 @@ def test_app_flow(quality='lowest'):
         results = {}
         threads = []
         if video_format:
-            video_thread = threading.Thread(target=_download_and_compare_stream, args=(video_format, base_url, "video", results))
+            video_thread = threading.Thread(target=test_and_download_stream, args=(client, video_format, "video", results))
             threads.append(video_thread)
             video_thread.start()
         
         if audio_format:
-            audio_thread = threading.Thread(target=_download_and_compare_stream, args=(audio_format, base_url, "audio", results, thumbnail_url))
+            audio_thread = threading.Thread(target=test_and_download_stream, args=(client, audio_format, "audio", results))
             threads.append(audio_thread)
             audio_thread.start()
 
@@ -176,11 +184,9 @@ def test_app_flow(quality='lowest'):
                 raise e
 
             combined_from_api_filename = "combined_from_api.mp4"
-            combine_response = requests.post(f"{base_url}/stream_combine", json={"videoURL": video_format["url"], "audioURL": audio_format["url"], "filename": combined_from_api_filename}, stream=True)
+            combine_response = client.post("/stream_combine", json={"videoURL": video_format["url"], "audioURL": audio_format["url"], "filename": combined_from_api_filename})
             with open(combined_from_api_filename, "wb") as f:
-                for chunk in combine_response.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
+                f.write(combine_response.data)
 
             local_size = os.path.getsize(locally_combined_filename)
             api_size = os.path.getsize(combined_from_api_filename)
@@ -210,14 +216,11 @@ def test_app_flow(quality='lowest'):
     finally:
         # Cleanup all downloaded files
         for stream_type in ["video", "audio"]:
-                if stream_type in results and "api_file" in results[stream_type] and os.path.exists(results[stream_type]["api_file"]):
+            if stream_type in results:
+                if "raw_file" in results[stream_type] and os.path.exists(results[stream_type]["raw_file"]):
+                    os.remove(results[stream_type]["raw_file"])
+                if "api_file" in results[stream_type] and os.path.exists(results[stream_type]["api_file"]):
                     os.remove(results[stream_type]["api_file"])
-        
-        if server_process:
-            print("Shutting down server...")
-            server_process.terminate()
-            server_process.wait()
-            print("Server shut down.")
 
 if __name__ == "__main__":
     import argparse
