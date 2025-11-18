@@ -17,12 +17,12 @@ def file_hash(filename):
 def test_and_download_stream(client, format_info, stream_type, results):
     """
     Tests the /stream_download endpoint for a given stream type (video or audio).
-    It downloads the file from the raw URL and the API endpoint in parallel and compares them.
-    The result and the path to the raw downloaded file are stored in the results dictionary.
+    Downloads the file from the API and verifies its properties.
+    The result and the path to the downloaded file are stored in the results dictionary.
     """
     testPass = "Failed"
-    raw_filename = f"test_{stream_type}_raw.{format_info['extension']}"
     api_filename = f"test_{stream_type}_api.{format_info['extension']}"
+    is_video_only = stream_type == "video" and not format_info.get("sampleRate")
 
     def download_raw():
         print(f"Downloading {stream_type} from raw URL...")
@@ -68,15 +68,36 @@ def test_and_download_stream(client, format_info, stream_type, results):
     if api_response and api_response.status_code == 200 and size_test_passed and hash_test_passed:
         testPass = "Pass"
 
-    print(f"/stream_download {stream_type} test {testPass} (Size match: {size_test_passed}, Hash match: {hash_test_passed})")
+    print(f"/stream_download {stream_type} test {testPass}")
     
     results[stream_type] = {
         "passed": testPass == "Pass",
-        "raw_file": raw_filename,
         "api_file": api_filename
     }
 
-def run_test(quality='lowest'):
+def _verify_thumbnail_embedded(filepath):
+    """Verify that a thumbnail is embedded in the media file."""
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', filepath],
+            check=True, capture_output=True, text=True
+        )
+        return 'video' in result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+def _verify_silent_audio(filepath):
+    """Verify that the media file has an audio track."""
+    try:
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_type', '-of', 'csv=p=0', filepath],
+            check=True, capture_output=True, text=True
+        )
+        return 'audio' in result.stdout.strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return False
+
+def test_app_flow(quality='lowest'):
     """
     Tests the Flask application by making API calls with a test client.
     :param quality: The quality of the streams to test ('lowest' or 'highest').
@@ -120,6 +141,7 @@ def run_test(quality='lowest'):
             print(f"Selected audio format: {audio_format.get('format')}")
 
 
+        thumbnail_url = data.get("thumbnail")
         results = {}
         threads = []
         if video_format:
@@ -207,4 +229,4 @@ if __name__ == "__main__":
                         help='The quality of the video/audio to test (default: lowest).')
     args = parser.parse_args()
     
-    run_test(quality=args.quality)
+    test_app_flow(quality=args.quality)
