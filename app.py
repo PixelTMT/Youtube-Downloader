@@ -80,46 +80,75 @@ def stream_combine():
     return Response(generate(proc), mimetype='video/mp4', headers=headers)
 
 
-@stream_with_context
-def generate_single(resp):
-    try:
-        for chunk in resp.iter_content(chunk_size=64*1024):
-            if chunk:
-                yield chunk
-    finally:
-        try: resp.close()
-        except: pass
-
 @app.route('/stream_download', methods=['POST'])
 def stream_download():
     data = request.json
     url = data.get('url')
     filename = data.get('filename')
+    thumbnail_url = data.get('thumbnailURL')
+    is_video_only = data.get('videoOnly', False)
 
     if not url or not filename:
         return jsonify({"error": "Invalid Request"}), 400
 
-    # extension and mime
     _, _, ext = filename.rpartition('.')
     ext = ext.lower()
-    safe_name = f"{slugify(filename.replace(f'.{ext}', ''), True)}.{ext}"
+
+    video_exts = ['mp4', 'webm', 'mkv']
+    audio_exts = ['mp3', 'm4a', 'opus']
+
+    stream = None
+    proc = None
+
     mimetype = mimetypes.get(ext, 'application/octet-stream')
-    headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
 
     try:
-        resp = requests.get(url, stream=True, timeout=15)
-    except Exception as e:
-        return jsonify({"error": "Failed to fetch source URL", "detail": str(e)}), 502
+        if ext in video_exts:
+            output_kwargs = {}
+            if ext == 'mp4':
+                output_kwargs['movflags'] = 'frag_keyframe+empty_moov+faststart'
 
-    if resp.status_code != 200:
-        return jsonify({"error": "Source returned error", "status": resp.status_code}), 502
+            if is_video_only:
+                video_input = ffmpeg.input(url)
+                silent_audio = ffmpeg.input('anullsrc', f='lavfi')
+                stream = ffmpeg.output(
+                    video_input.video, silent_audio.audio, 'pipe:1',
+                    c_v='copy', c_a='aac', shortest=None, f=ext, **output_kwargs
+                )
+            else:
+                input_stream = ffmpeg.input(url)
+                stream = ffmpeg.output(
+                    input_stream, 'pipe:1', c='copy', f=ext, **output_kwargs
+                )
 
-    # forward the Content-Length if available for progress bars
-    cl = resp.headers.get('Content-Length')
-    if cl:
-        headers['X-Estimated-Content-Length'] = cl
+        elif ext in audio_exts:
+            output_kwargs = {}
+            if ext == 'm4a':
+                output_kwargs['movflags'] = 'frag_keyframe+empty_moov+faststart'
 
-    return Response(generate_single(resp), mimetype=mimetype, headers=headers)
+            audio_input = ffmpeg.input(url)
+            if thumbnail_url:
+                thumbnail_input = ffmpeg.input(thumbnail_url)
+                stream = ffmpeg.output(
+                    audio_input.audio, thumbnail_input.video, 'pipe:1',
+                    map=['0:a', '1:v'], c='copy', **{'disposition:v': 'attached_pic'},
+                    f=ext, **output_kwargs
+                )
+            else:
+                stream = ffmpeg.output(
+                    audio_input.audio, 'pipe:1', c='copy', f=ext, **output_kwargs
+                )
+        else:
+            return jsonify({"error": "Unsupported file type"}), 400
+
+        stream = stream.global_args('-hide_banner', '-loglevel', 'error')
+        proc = stream.run_async(pipe_stdout=True, pipe_stderr=True)
+
+    except ffmpeg.Error as e:
+        return jsonify({"error": "ffmpeg execution failed", "details": e.stderr.decode() if e.stderr else 'No details'}), 500
+
+    headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
+    return Response(generate(proc), mimetype=mimetype, headers=headers)
 
 @app.route('/api/video_details', methods=['POST'])
 def get_video_details():
