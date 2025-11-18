@@ -1,11 +1,11 @@
 
 import subprocess
-import time
 import requests
 import os
-import signal
 import threading
 import hashlib
+import json
+from app import app
 
 def file_hash(filename):
     h = hashlib.sha256()
@@ -14,7 +14,7 @@ def file_hash(filename):
             h.update(chunk)
     return h.hexdigest()
 
-def test_and_download_stream(format_info, base_url, stream_type, results):
+def test_and_download_stream(client, format_info, stream_type, results):
     """
     Tests the /stream_download endpoint for a given stream type (video or audio).
     It downloads the file from the raw URL and the API endpoint in parallel and compares them.
@@ -35,11 +35,9 @@ def test_and_download_stream(format_info, base_url, stream_type, results):
 
     def download_api():
         print(f"Downloading {stream_type} from API...")
-        api_response = requests.post(f"{base_url}/stream_download", json={"url": format_info["url"], "filename": api_filename}, stream=True)
+        api_response = client.post("/stream_download", json={"url": format_info["url"], "filename": api_filename})
         with open(api_filename, "wb") as f:
-            for chunk in api_response.iter_content(chunk_size=1024):
-                if chunk:
-                    f.write(chunk)
+            f.write(api_response.data)
         print(f"API {stream_type} download complete.")
         return api_response
 
@@ -80,24 +78,18 @@ def test_and_download_stream(format_info, base_url, stream_type, results):
 
 def run_test(quality='lowest'):
     """
-    Tests the Flask application by starting the server, making API calls, and then shutting it down.
+    Tests the Flask application by making API calls with a test client.
     :param quality: The quality of the streams to test ('lowest' or 'highest').
     """
-    server_process = None
+    client = app.test_client()
     try:
-        # Start the server
-        server_process = subprocess.Popen(['.\\.venv\\Scripts\\python.exe', 'app.py'])
-        print("Server started, waiting for it to be ready...")
-        time.sleep(5)
-
-        base_url = "http://192.168.0.102:14032"
         youtube_url = "https://www.youtube.com/watch?v=g0JEUPfmu9c"
 
         # Test /api/video_details
         print("Testing /api/video_details...")
-        response = requests.post(f"{base_url}/api/video_details", json={"url": youtube_url})
+        response = client.post("/api/video_details", json={"url": youtube_url})
         print(f"response.status_code: {response.status_code}")
-        data = response.json()
+        data = json.loads(response.data)
         print(f"Title: {data['title']}")
         print("/api/video_details test PASSED")
 
@@ -131,12 +123,12 @@ def run_test(quality='lowest'):
         results = {}
         threads = []
         if video_format:
-            video_thread = threading.Thread(target=test_and_download_stream, args=(video_format, base_url, "video", results))
+            video_thread = threading.Thread(target=test_and_download_stream, args=(client, video_format, "video", results))
             threads.append(video_thread)
             video_thread.start()
         
         if audio_format:
-            audio_thread = threading.Thread(target=test_and_download_stream, args=(audio_format, base_url, "audio", results))
+            audio_thread = threading.Thread(target=test_and_download_stream, args=(client, audio_format, "audio", results))
             threads.append(audio_thread)
             audio_thread.start()
 
@@ -170,11 +162,9 @@ def run_test(quality='lowest'):
                 raise e
 
             combined_from_api_filename = "combined_from_api.mp4"
-            combine_response = requests.post(f"{base_url}/stream_combine", json={"videoURL": video_format["url"], "audioURL": audio_format["url"], "filename": combined_from_api_filename}, stream=True)
+            combine_response = client.post("/stream_combine", json={"videoURL": video_format["url"], "audioURL": audio_format["url"], "filename": combined_from_api_filename})
             with open(combined_from_api_filename, "wb") as f:
-                for chunk in combine_response.iter_content(chunk_size=1024):
-                    if chunk:
-                        f.write(chunk)
+                f.write(combine_response.data)
 
             local_size = os.path.getsize(locally_combined_filename)
             api_size = os.path.getsize(combined_from_api_filename)
@@ -205,16 +195,10 @@ def run_test(quality='lowest'):
         # Cleanup all downloaded files
         for stream_type in ["video", "audio"]:
             if stream_type in results:
-                if os.path.exists(results[stream_type]["raw_file"]):
+                if "raw_file" in results[stream_type] and os.path.exists(results[stream_type]["raw_file"]):
                     os.remove(results[stream_type]["raw_file"])
-                if os.path.exists(results[stream_type]["api_file"]):
+                if "api_file" in results[stream_type] and os.path.exists(results[stream_type]["api_file"]):
                     os.remove(results[stream_type]["api_file"])
-        
-        if server_process:
-            print("Shutting down server...")
-            server_process.terminate()
-            server_process.wait()
-            print("Server shut down.")
 
 if __name__ == "__main__":
     import argparse
